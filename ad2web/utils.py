@@ -67,12 +67,12 @@ def pretty_date(dt, default=None):
     diff = now - dt
 
     periods = (
-        (diff.days / 365, 'year', 'years'),
-        (diff.days / 30, 'month', 'months'),
-        (diff.days / 7, 'week', 'weeks'),
+        (diff.days // 365, 'year', 'years'),
+        (diff.days // 30, 'month', 'months'),
+        (diff.days // 7, 'week', 'weeks'),
         (diff.days, 'day', 'days'),
-        (diff.seconds / 3600, 'hour', 'hours'),
-        (diff.seconds / 60, 'minute', 'minutes'),
+        (diff.seconds // 3600, 'hour', 'hours'),
+        (diff.seconds // 60, 'minute', 'minutes'),
         (diff.seconds, 'second', 'seconds'),
     )
 

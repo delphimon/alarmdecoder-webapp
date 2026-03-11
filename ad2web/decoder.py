@@ -79,7 +79,10 @@ decodersocket = Blueprint('sock', __name__, url_prefix='/socket.io')
 socketio = SocketIO()
 
 def create_decoder_socket(app):
-    socketio.init_app(app, async_mode='gevent', cors_allowed_origins='*',
+    import sys
+    # Use threading mode in tests to avoid gevent event loop issues
+    async_mode = 'threading' if ('pytest' in sys.modules or os.environ.get('AD_TESTING')) else 'gevent'
+    socketio.init_app(app, async_mode=async_mode, cors_allowed_origins='*',
                       logger=False, engineio_logger=False)
     return socketio
 

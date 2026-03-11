@@ -2,7 +2,7 @@
 
 import os
 import numbers
-import cgi
+import html
 
 from flask import Blueprint, render_template, abort, g, request, flash, Response, url_for, redirect
 from flask import current_app as APP
@@ -115,7 +115,7 @@ class DataTablesServer:
 
     def output_result(self):
         output = {}
-        output['sEcho'] = cgi.escape(str(int(self.request_values['sEcho'])))
+        output['sEcho'] = html.escape(str(int(self.request_values['sEcho'])))
         output['iTotalRecords'] = int(self.cardinality);
         output['iTotalDisplayRecords'] = int(self.cardinality);
 
@@ -168,7 +168,7 @@ class DataTablesServer:
     def filtering(self):
         filter = None
         if( 'sSearch' in self.request_values) and (self.request_values['sSearch'] != "" ):
-            filter = cgi.escape(str(self.request_values['sSearch']))
+            filter = html.escape(str(self.request_values['sSearch']))
 
         return filter
 
@@ -179,7 +179,7 @@ class DataTablesServer:
             if self.request_values['iDisplayStart'].isdigit() is False or self.request_values['iDisplayLength'].isdigit() is False:
                 return pages
 
-            pages.start = int(cgi.escape(self.request_values['iDisplayStart']))
-            pages.length = int(cgi.escape(self.request_values['iDisplayLength']))
+            pages.start = int(html.escape(self.request_values['iDisplayStart']))
+            pages.length = int(html.escape(self.request_values['iDisplayLength']))
 
         return pages;

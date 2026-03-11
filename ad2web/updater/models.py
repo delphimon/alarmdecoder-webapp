@@ -3,7 +3,7 @@ import sys
 import logging
 import shutil
 import json
-import urllib
+import urllib.request
 
 import sh
 import sqlalchemy.exc
@@ -77,7 +77,7 @@ class Updater(object):
             data = None
             version = version[1:]
             try:
-                response = urllib.urlopen(FIRMWARE_JSON_URL)
+                response = urllib.request.urlopen(FIRMWARE_JSON_URL)
                 data = json.loads(response.read())
                 for firmware in data['firmware']:
                     if firmware['tag'] == "Stable":

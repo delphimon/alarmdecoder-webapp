@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
 
-from gevent import monkey
-monkey.patch_all()
-
 import os
+import sys
+
+# Only apply gevent monkey patching when not in a test environment
+# to avoid breaking subprocess/IO operations during testing
+if 'pytest' not in sys.modules and not os.environ.get('AD_TESTING'):
+    from gevent import monkey
+    monkey.patch_all()
+
 import signal
 import jsonpickle
 
@@ -30,7 +35,7 @@ from .settings.models import Setting
 from .setup.constants import SETUP_COMPLETE, SETUP_STAGE_ENDPOINT, SETUP_ENDPOINT_STAGE
 from .setup import setup
 from .extensions import db, mail, login_manager, oid
-from .utils import INSTANCE_FOLDER_PATH
+from .utils import INSTANCE_FOLDER_PATH, user_is_authenticated
 from .cameras import cameras
 
 # For import *
@@ -195,12 +200,11 @@ def configure_extensions(app):
     mail.init_app(app)
 
     # flask-babel
-    babel = Babel(app)
-
-    @babel.localeselector
     def get_locale():
         accept_languages = app.config.get('ACCEPT_LANGUAGES')
         return request.accept_languages.best_match(accept_languages)
+
+    babel = Babel(app, locale_selector=get_locale)
 
     # flask-login
     login_manager.login_view = 'frontend.login'
@@ -209,7 +213,7 @@ def configure_extensions(app):
     @login_manager.user_loader
     def load_user(id):
         return User.query.get(id)
-    login_manager.setup_app(app)
+    login_manager.init_app(app)
 
     # flask-openid
     oid.init_app(app)
@@ -231,6 +235,10 @@ def configure_template_filters(app):
     @app.template_filter()
     def format_date(value, format='%Y-%m-%d'):
         return value.strftime(format)
+
+    # Expose wrapped is_authenticated to jinja for use in templates.
+    app.jinja_env.globals['user_is_authenticated'] = user_is_authenticated
+    app.jinja_env.globals.setdefault('version', '')
 
 
 def configure_logging(app):
