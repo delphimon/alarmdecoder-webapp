@@ -102,7 +102,7 @@ def make_dir(dir_path):
     try:
         if not os.path.exists(dir_path):
             os.mkdir(dir_path)
-    except Exception, e:
+    except Exception as e:
         raise e
 
 
@@ -110,7 +110,7 @@ def tar_add_directory(tar, name):
     ti = tarfile.TarInfo(name=name)
     ti.mtime = time.time()
     ti.type = tarfile.DIRTYPE
-    ti.mode = 0755
+    ti.mode = 0o755
     tar.addfile(ti)
 
 

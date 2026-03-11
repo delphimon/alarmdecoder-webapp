@@ -23,7 +23,7 @@ class TestFrontend(TestCase):
             'agree': True,
         }
         response = self.client.post('/signup', data=data, follow_redirects=True)
-        assert "Hello" in response.data
+        assert b"Hello" in response.data
         new_user = User.query.filter_by(name=data['name']).first()
         assert new_user is not None
 
@@ -103,7 +103,7 @@ class TestSettings(TestCase):
             'password_again': '654321',
         }
         response = self.client.post('/settings/password', data=data)
-        assert "help-block error" not in response.data
+        assert b"help-block error" not in response.data
         self.assert200(response)
         self.assertTemplateUsed("settings/password.html")
 

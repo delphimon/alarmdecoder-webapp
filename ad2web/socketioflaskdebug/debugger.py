@@ -22,7 +22,7 @@ class SocketIODebugger(DebuggedApplication):
             if hasattr(self.app, 'before_request'):
                 self.app.before_request(self.route_debugger)
             else:
-                print 'app.before_request() not found, please route it yourself.'
+                print('app.before_request() not found, please route it yourself.')
 
     def protect_namespace(self, namespace):
         """
@@ -63,4 +63,4 @@ class SocketIODebugger(DebuggedApplication):
         if self.exc_info is not None:
             exc_type, exc_value, exc_traceback = self.exc_info
             self.exc_info = None
-            raise exc_type, exc_value, exc_traceback
+            raise exc_value.with_traceback(exc_traceback)

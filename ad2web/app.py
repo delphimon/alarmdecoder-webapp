@@ -9,7 +9,6 @@ import jsonpickle
 
 from flask import Flask, request, render_template, g, redirect, url_for
 from flask_babel import Babel
-from flask_script import Manager
 
 from alarmdecoder import AlarmDecoder
 from alarmdecoder.devices import SerialDevice
@@ -147,14 +146,13 @@ def create_app(config=None, app_name=None, blueprints=None):
 
     appsocket = create_decoder_socket(app)
     decoder = Decoder(app, appsocket)
-    manager = Manager(app)
     app.decoder = decoder
 
     return app, appsocket
 
 def init_app(app, appsocket):
     def signal_handler(signal, frame):
-        appsocket.stop()
+        # Flask-SocketIO doesn't need explicit stop
         app.decoder.stop()
         os._exit(0)
 
@@ -170,7 +168,7 @@ def init_app(app, appsocket):
                 app.logger.error("Could not find 'settings' table in the database.  You may need to run 'python manage.py initdb'.")
                 os._exit(0)
 
-    except Exception, err:
+    except Exception as err:
         app.logger.error("Error", exc_info=True)
 
 def configure_app(app, config=None):
