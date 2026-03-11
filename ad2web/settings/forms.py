@@ -109,7 +109,7 @@ class EmailConfigureForm(Form):
     mail_server = StringField(u'Email Server', [DataRequired(), Length(max=255)], description=u'ex: smtp.gmail.com')
     port = IntegerField(u'Server Port', [DataRequired(), NumberRange(1, 65535)], description=u'ex: 25 for normal or 587 for TLS')
     tls = BooleanField(u'Use TLS?', default=False)
-    auth_required = BooleanField(u'Authentication DataRequired?',default=False)
+    auth_required = BooleanField(u'Authentication Required?',default=False)
     username = StringField(u'Username', [Optional(), Length(max=255)], description=u'Email Username')
     password = PasswordField(u'Password', [Optional(), Length(max=255)], description=u'Email Password')
     default_sender = StringField(u'From Email', [DataRequired(), Length(max=255)], default='root@alarmdecoder', description=u'Emails will come from this address')

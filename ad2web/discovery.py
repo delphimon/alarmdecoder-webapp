@@ -199,9 +199,9 @@ class DiscoveryServer(threading.Thread):
 
 class DiscoveryRequest(BaseHTTPRequestHandler):
     def __init__(self, request_text):
-        if isinstance(request_text, bytes):
-            request_text = request_text.decode('utf-8', errors='replace')
-        self.rfile = BytesIO(request_text.encode('utf-8'))
+        if isinstance(request_text, str):
+            request_text = request_text.encode('utf-8')
+        self.rfile = BytesIO(request_text)
         self.raw_requestline = self.rfile.readline()
         self.error_code = self.error_message = None
         self.parse_request()
