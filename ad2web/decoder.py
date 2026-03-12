@@ -538,7 +538,7 @@ class Decoder(object):
             if on_sending_received in self.device.on_sending_received:
                 self.device.on_sending_received.remove(on_sending_received)
             results, details = 'PASS', ''
-            if not status:
+            if status != True:
                 results, details = 'FAIL', 'Check wiring and that the correct keypad address is being used.'
             self.broadcast('test', {'test': 'send', 'results': results, 'details': details})
 

@@ -157,7 +157,8 @@ def init_app(app, appsocket):
 
         # Make sure the database exists.
         with app.app_context():
-            if db.metadata.tables['settings'].exists(db.engine):
+            from sqlalchemy import inspect as sa_inspect
+            if sa_inspect(db.engine).has_table('settings'):
                 app.decoder.init()
                 app.decoder.start()
             else:

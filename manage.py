@@ -2,22 +2,15 @@
 
 import os
 import sys
-import datetime
 import signal
 import click
-from flask.cli import FlaskGroup
 
-from ad2web import create_app, init_app
-from ad2web.extensions import db
 
-def _create_app(info=None):
-    app, socketio = create_app()
-    return app
-
-@click.group(cls=FlaskGroup, create_app=_create_app)
+@click.group()
 def cli():
     """Management script for the AlarmDecoder webapp."""
     pass
+
 
 @cli.command('run')
 @click.option('--host', default='0.0.0.0', help='Host to listen on')
@@ -42,9 +35,13 @@ def run_command(host, port, debug):
     app.debug = debug
     socketio.run(app, host=host, port=port, debug=debug, allow_unsafe_werkzeug=True)
 
+
 @cli.command('initdb')
 def initdb_command():
     """Init/reset database."""
+    from ad2web import create_app
+    from ad2web.extensions import db
+
     app, socketio = create_app()
     with app.app_context():
         try:
@@ -68,6 +65,7 @@ def initdb_command():
             print("Database initialization failed: {0}".format(err))
         else:
             print("Database initialization complete!")
+
 
 if __name__ == "__main__":
     cli()
