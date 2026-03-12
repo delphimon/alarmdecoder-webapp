@@ -8,7 +8,7 @@ User=pi
 Group=dialout
 WorkingDirectory=/opt/alarmdecoder-webapp
 Environment="TERM=vt100"
-ExecStart=/usr/bin/gunicorn --worker-class=geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers=1 --timeout=120 --log-level=debug wsgi:application
+ExecStart=/opt/alarmdecoder-webapp/.venv/bin/gunicorn --worker-class=geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers=1 --timeout=120 wsgi:application
 ExecReload=/bin/kill -s HUP $MAINPID
 ExecStop=/bin/kill -s TERM $MAINPID
 PrivateTmp=true
