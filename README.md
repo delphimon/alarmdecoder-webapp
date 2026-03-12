@@ -13,14 +13,16 @@ This is the home of the official webapp for the [AlarmDecoder](http://www.alarmd
 - Notifications on alarm events
 - Multiple user accounts and per-user notifications and certificates (if configured)
 
-## Installation
+## Requirements
 
-### Requirements
-
+- **Python 3.6+** (Python 2 is no longer supported)
 - nginx >= 1.6
 - gunicorn
+- gevent + gevent-websocket (for WebSocket support)
 
-NOTE: Other web and WSGI servers will likely work but will require configuration.
+NOTE: Other web and WSGI servers supporting WebSockets will likely work but will require configuration.
+
+## Installation
 
 ### Pre-installed Image
 
@@ -28,7 +30,7 @@ If you're running on a Raspberry Pi the easiest way to get started is to downloa
 
 ### Manual Installation
 
-If you would rather do it by hand you can follow these steps using a Raspbian 9 base image:
+If you would rather do it by hand you can follow these steps using a Raspberry Pi OS (Bookworm/Bullseye) base image:
 You can also look at the [PiBakery](contrib/PiBakery/) recipe for the steps. This presumes you will be the pi user with a monitor and keyboard attached to the Pi. Optionally you can connect over the network after enabling ssh and WiFi. See also [Headless wifi setup](https://www.raspberrypi.org/documentation/configuration/wireless/headless.md)
 * Enable SSH at boot (optional)
 ```
@@ -98,12 +100,10 @@ sudo apt-get install \
   minicom \
   miniupnpc \
   nginx \
-  python2.7-dev \
-  python-dev \
-  python-httplib2 \
-  python-opencv \
-  python-pip \
-  python-virtualenv \
+  python3 \
+  python3-dev \
+  python3-pip \
+  python3-venv \
   screen \
   sendmail \
   sqlite3 \
@@ -113,11 +113,11 @@ sudo apt-get install \
 ```
 * Update pip
 ```
-sudo pip install --upgrade pip
+sudo pip3 install --upgrade pip
 ```
 * Update pip setuptools
 ```
-sudo pip install --upgrade setuptools
+sudo pip3 install --upgrade setuptools
 ```
 * Create needed directories and set permissions for updates
 ```
@@ -133,7 +133,7 @@ cd /opt && git clone https://github.com/nutechsoftware/alarmdecoder-webapp.git
 ```
 * Add Python requirements to the entire system as root
 ```
-cd /opt/alarmdecoder-webapp/ && sudo pip install -r requirements.txt
+cd /opt/alarmdecoder-webapp/ && sudo pip3 install -r requirements.txt
 ```
 * Add ser2sock
 ```
@@ -199,7 +199,7 @@ User=pi
 Group=dialout
 WorkingDirectory=/opt/alarmdecoder-webapp
 Environment="TERM=vt100"
-ExecStart=/usr/bin/gunicorn --worker-class=socketio.sgunicorn.GeventSocketIOWorker --timeout=120 --env=POLICY_SERVER=0 --log-level=debug wsgi:application
+ExecStart=/usr/bin/gunicorn --worker-class=geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers=1 --timeout=120 --log-level=debug wsgi:application
 ExecReload=/bin/kill -s HUP $MAINPID
 ExecStop=/bin/kill -s TERM $MAINPID
 PrivateTmp=true
@@ -269,7 +269,47 @@ sudo systemctl enable nginx
 ```
 * Init the AD2Web database as pi user
 ```
-cd /opt/alarmdecoder-webapp/ && python manage.py initdb
+cd /opt/alarmdecoder-webapp/ && python3 manage.py initdb
+```
+
+## Python Dependencies
+
+The application requires **Python 3.6 or later**.  All dependencies are listed in `requirements.txt` and can be installed with:
+
+```
+pip3 install -r requirements.txt
+```
+
+Key dependencies include:
+- **Flask** >= 2.0 with Flask-SocketIO >= 5.0 (replaces the legacy gevent-socketio)
+- **gevent** >= 21.12 + **gevent-websocket** >= 0.10 (WebSocket transport for gunicorn)
+- **WTForms** >= 3.0, **Flask-Babel** >= 3.0, **Flask-Login** >= 0.6, **Werkzeug** >= 2.0
+- **SQLAlchemy** >= 1.4 with **alembic** >= 1.0 for database migrations
+- **click** (CLI management via `manage.py`)
+
+## Running the Application
+
+### Development
+
+```
+python3 manage.py run
+```
+
+### Production (gunicorn)
+
+```
+gunicorn --worker-class=geventwebsocket.gunicorn.workers.GeventWebSocketWorker \
+         --workers=1 --timeout=120 wsgi:application
+```
+
+> **Note:** `--workers=1` is required for Socket.IO state consistency.  Use the
+> `GeventWebSocketWorker` worker class (from `gevent-websocket`) so that WebSocket
+> upgrade requests are handled correctly by gevent.
+
+### Database initialisation
+
+```
+python3 manage.py initdb
 ```
 
 ## Support
