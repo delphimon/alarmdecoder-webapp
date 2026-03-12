@@ -15,7 +15,7 @@ try:
 except ImportError:
     hasnetifaces = 0
 import sh
-import compiler
+import ast as _ast
 import sys
 import types
 import importlib
@@ -26,9 +26,6 @@ try:
     has_upnp = True
 except ImportError:
     has_upnp = False
-
-from compiler.ast import Discard, Const
-from compiler.visitor import ASTVisitor
 
 from datetime import datetime, timedelta
 
@@ -61,7 +58,7 @@ try:
 except ImportError:
     hasservice = False
 
-import urllib2
+import urllib.request as urllib2
 import ssl
 
 settings = Blueprint('settings', __name__, url_prefix='/settings')
@@ -468,7 +465,7 @@ def _get_cpu_temperature():
     if os.path.isfile('/sys/class/thermal/thermal_zone0/temp'):
         with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
             cpu_temperature = float(f.readline())
-	cpu_temperature_string = str(cpu_temperature / 1000)
+        cpu_temperature_string = str(cpu_temperature / 1000)
         return cpu_temperature_string
     else:
         return 'not supported'
@@ -561,8 +558,8 @@ def switch_branch():
     def build_remotes_list(dlist):
         ## Map reduce remote lines group on origin, first(url), accumulate(types)
         ##  original
-        ##   origin	https://github.com/nutechsoftware/alarmdecoder.git (fetch)
-        ##   origin	https://github.com/nutechsoftware/alarmdecoder.git (push)
+        ##   origin https://github.com/nutechsoftware/alarmdecoder.git (fetch)
+        ##   origin https://github.com/nutechsoftware/alarmdecoder.git (push)
         ##   testing https://github.com/nutechsoftware/alarmdecoder-webapp.git (fetch)
         ##   testing https://github.com/nutechsoftware/alarmdecoder-webapp.git (push)
         ##  result
@@ -662,7 +659,7 @@ def switch_branch():
 
     try:
         #
-        # origin	https://github.com/nutechsoftware/alarmdecoder.git (fetch)
+        # origin    https://github.com/nutechsoftware/alarmdecoder.git (fetch)
         remotes_web = git_web.remote('-v')
         for line in remotes_web:
             remote_list_web[line] = line.strip()
@@ -770,11 +767,11 @@ def import_backup():
 
                 return redirect(url_for('frontend.index'))
 
-        except (tarfile.ReadError, KeyError), err:
+        except (tarfile.ReadError, KeyError) as err:
             current_app.logger.error('Import Error: {0}'.format(err))
             flash('Import Failed: Not a valid AlarmDecoder archive.', 'error')
 
-        except (SQLAlchemyError, ValueError), err:
+        except (SQLAlchemyError, ValueError) as err:
             db.session.rollback()
 
             current_app.logger.error('Import Error: {0}'.format(err))
@@ -792,7 +789,7 @@ def _import_model(tar, tarinfo, model):
 
     for itm in items:
         m = model()
-        for k, v in itm.iteritems():
+        for k, v in itm.items():
             if isinstance(model.__table__.columns[k].type, db.DateTime) and v is not None:
                 v = datetime.strptime(v, '%Y-%m-%d %H:%M:%S.%f')
 
@@ -1076,66 +1073,57 @@ def pyfiles(startPath):
 
     return r
 
-class ImportVisitor(object):
+class ImportVisitor(_ast.NodeVisitor):
         def __init__(self):
             self.modules = []
             self.recent = []
             self.exists = []
 
-        def visitImport(self, node):
+        def visit_Import(self, node):
             self.accept_imports()
 
             mod = {}
-            for x in node.names:
-                mod['modname'] = x[0]
+            for alias in node.names:
+                mod = {}
+                mod['modname'] = alias.name
                 mod['importname'] = None
-                mod['viewname'] = x[1] or x[0]
+                mod['viewname'] = alias.asname or alias.name
                 mod['lineno'] = node.lineno
                 mod['level'] = 0
 
-                exist = {'modname': x[0], 'importname': None}
+                exist = {'modname': alias.name, 'importname': None}
                 if exist not in self.exists:
                     self.recent.append(mod)
                     self.exists.append(exist)
 
-        def visitFrom(self, node):
+        def visit_ImportFrom(self, node):
             self.accept_imports()
-            modname = node.modname
+            modname = node.module or ''
             if modname == '__future__':
-                return  #ignore!
+                return
 
-            #module name, import name, view name, line number of script, level
-            mod = {}
-            for name, as_ in node.names:
-                if name == '*':
+            for alias in node.names:
+                mod = {}
+                if alias.name == '*':
                     mod['modname'] = modname
                     mod['importname'] = None
                     mod['viewname'] = None
                     mod['lineno'] = node.lineno
-                    mod['level'] = node.level
+                    mod['level'] = node.level or 0
                 else:
                     mod['modname'] = modname
-                    mod['importname'] = name
-                    mod['viewname'] = as_ or name
+                    mod['importname'] = alias.name
+                    mod['viewname'] = alias.asname or alias.name
                     mod['lineno'] = node.lineno
-                    mod['level'] = node.level
+                    mod['level'] = node.level or 0
 
-                exist = {'modname': mod['modname'], 'importname': mod['importname'] }
-
+                exist = {'modname': mod['modname'], 'importname': mod['importname']}
                 if exist not in self.exists:
                     self.recent.append(mod)
                     self.exists.append(exist)
 
         def default(self, node):
-            pragma = None
-            if self.recent:
-                if isinstance(node, Discard):
-                    children = node.getChildren()
-                    if len(children) == 1 and isinstance(children[0], Const):
-                        const_node = children[0]
-                        pragma = const_node.value
-
-            self.accept_imports(pragma)
+            self.accept_imports()
 
         def accept_imports(self, pragma=None):
             for item in self.recent:
@@ -1143,24 +1131,22 @@ class ImportVisitor(object):
             self.recent = []
 
         def finalize(self):
-            self.accept_imports();
+            self.accept_imports()
             return self.modules
 
 
-class ImportWalker(ASTVisitor):
+class ImportWalker:
     def __init__(self, visitor):
-        ASTVisitor.__init__(self)
         self._visitor = visitor
 
-    def default( self, node, *args):
+    def default(self, node, *args):
         self._visitor.default(node)
-        ASTVisitor.default(self, node, *args)
 
 
 def parse_python_source(fn):
-    contents = open(fn, 'rU').read()
-    ast = compiler.parse(contents)
+    with open(fn, 'r') as f:
+        contents = f.read()
+    tree = _ast.parse(contents, fn)
     vis = ImportVisitor()
-
-    compiler.walk(ast, vis, ImportWalker(vis))
+    vis.visit(tree)
     return vis.finalize()

@@ -1,15 +1,11 @@
 # -*- coding: utf-8 -*-
 
-from gevent import monkey
-monkey.patch_all()
-
 import os
 import signal
 import jsonpickle
 
 from flask import Flask, request, render_template, g, redirect, url_for
 from flask_babel import Babel
-from flask_script import Manager
 
 from alarmdecoder import AlarmDecoder
 from alarmdecoder.devices import SerialDevice
@@ -147,14 +143,12 @@ def create_app(config=None, app_name=None, blueprints=None):
 
     appsocket = create_decoder_socket(app)
     decoder = Decoder(app, appsocket)
-    manager = Manager(app)
     app.decoder = decoder
 
     return app, appsocket
 
 def init_app(app, appsocket):
     def signal_handler(signal, frame):
-        appsocket.stop()
         app.decoder.stop()
         os._exit(0)
 
@@ -170,7 +164,7 @@ def init_app(app, appsocket):
                 app.logger.error("Could not find 'settings' table in the database.  You may need to run 'python manage.py initdb'.")
                 os._exit(0)
 
-    except Exception, err:
+    except Exception as err:
         app.logger.error("Error", exc_info=True)
 
 def configure_app(app, config=None):
@@ -197,12 +191,11 @@ def configure_extensions(app):
     mail.init_app(app)
 
     # flask-babel
-    babel = Babel(app)
-
-    @babel.localeselector
     def get_locale():
         accept_languages = app.config.get('ACCEPT_LANGUAGES')
         return request.accept_languages.best_match(accept_languages)
+
+    babel = Babel(app, locale_selector=get_locale)
 
     # flask-login
     login_manager.login_view = 'frontend.login'
@@ -211,7 +204,7 @@ def configure_extensions(app):
     @login_manager.user_loader
     def load_user(id):
         return User.query.get(id)
-    login_manager.setup_app(app)
+    login_manager.init_app(app)
 
     # flask-openid
     oid.init_app(app)
@@ -256,8 +249,6 @@ def configure_logging(app):
         '[in %(pathname)s:%(lineno)d]')
     )
 
-    socketio_logger = logging.getLogger('socketio.virtsocket')
-    socketio_logger.addHandler(info_file_handler)
     app.logger.addHandler(info_file_handler)
 
 

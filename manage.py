@@ -1,56 +1,52 @@
 # -*- coding: utf-8 -*-
 
+import os
+import sys
 import datetime
 import signal
-import sys
+import click
+from flask.cli import FlaskGroup
 
-import werkzeug.serving
-from werkzeug.debug import DebuggedApplication
-from flask_script import Manager, Command
-
-from alarmdecoder.util import NoDeviceError
 from ad2web import create_app, init_app
-from ad2web.decoder import Decoder
 from ad2web.extensions import db
 
-import logging
-
-app, appsocket = None, None
-
-def _create_app(**kwargs):
-    global app, appsocket
-
-    app, appsocket = create_app()
-
+def _create_app(info=None):
+    app, socketio = create_app()
     return app
 
+@click.group(cls=FlaskGroup, create_app=_create_app)
+def cli():
+    """Management script for the AlarmDecoder webapp."""
+    pass
 
-class RunCommand(Command):
-    def run(self):
-        """Run in local machine."""
+@cli.command('run')
+@click.option('--host', default='0.0.0.0', help='Host to listen on')
+@click.option('--port', default=None, type=int, help='Port to listen on')
+@click.option('--debug', is_flag=True, default=True, help='Enable debug mode')
+def run_command(host, port, debug):
+    """Run in local machine."""
+    from ad2web import create_app, init_app
 
-        @werkzeug.serving.run_with_reloader
-        def runDebugServer():
-            try:
-                init_app(app, appsocket)
+    app, socketio = create_app()
 
-                app.debug = True
-                dapp = DebuggedApplication(app, evalex=True)
-                appsocket.serve_forever()
+    if port is None:
+        port = int(os.getenv('AD_LISTENER_PORT', '5000'))
 
-            except Exception, err:
-                app.logger.error("Error", exc_info=True)
+    try:
+        init_app(app, socketio)
+    except SystemExit:
+        raise
+    except Exception:
+        app.logger.error("Error initializing app", exc_info=True)
 
-        try:
-            runDebugServer()
-        except:
-            pass
+    app.debug = debug
+    socketio.run(app, host=host, port=port, debug=debug, allow_unsafe_werkzeug=True)
 
-
-class InitDBCommand(Command):
-    def run(self):
-        """Init/reset database."""
-
+@cli.command('initdb')
+def initdb_command():
+    """Init/reset database."""
+    app, socketio = create_app()
+    with app.app_context():
         try:
             db.drop_all()
             db.create_all()
@@ -64,23 +60,14 @@ class InitDBCommand(Command):
             from ad2web.notifications.models import NotificationMessage
             from ad2web.notifications.constants import DEFAULT_EVENT_MESSAGES
 
-            for event, message in DEFAULT_EVENT_MESSAGES.iteritems():
+            for event, message in DEFAULT_EVENT_MESSAGES.items():
                 db.session.add(NotificationMessage(id=event, text=message))
 
             db.session.commit()
-        except Exception, err:
+        except Exception as err:
             print("Database initialization failed: {0}".format(err))
         else:
             print("Database initialization complete!")
 
-
-manager = Manager(_create_app)
-manager.add_command('run', RunCommand())
-manager.add_command('initdb', InitDBCommand())
-manager.add_option('-c', '--config',
-                   dest="config",
-                   required=False,
-                   help="config file")
-
 if __name__ == "__main__":
-    manager.run()
+    cli()

@@ -7,8 +7,8 @@ import smtplib
 import threading
 from email.mime.text import MIMEText
 from email.utils import formatdate
-from urlparse import urlparse
-import sleekxmpp
+from urllib.parse import urlparse
+import slixmpp as sleekxmpp
 import json
 import re
 import ssl
@@ -112,9 +112,9 @@ def raise_with_stack(func):
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            tb = traceback.format_exc(e).splitlines()
+            tb = traceback.format_exc().splitlines()
             # Grab error and line number
-            raise StandardError("%s %s" % (repr(e), tb[3].split(",")[1].strip()))
+            raise Exception("%s %s" % (repr(e), tb[3].split(",")[1].strip() if len(tb) > 3 else ''))
 
     return wrapped
 
@@ -189,7 +189,7 @@ class NotificationSystem(object):
     def send(self, type, **kwargs):
         errors = []
 
-        for id, n in self._notifiers.iteritems():
+        for id, n in self._notifiers.items():
             if n and n.subscribes_to(type, **kwargs):
                 try:
                     message, rawmessage = self._build_message(type, **kwargs)
@@ -211,7 +211,7 @@ class NotificationSystem(object):
                         else:
                             n.send(type, message, rawmessage)
 
-                except Exception, err:
+                except Exception as err:
                     errors.append('Exception in notification {0}.send(): {1}'.format(n.__class__.__name__,str(err)))
 
         return errors
@@ -232,7 +232,7 @@ class NotificationSystem(object):
             if n:
                 n.send(None, 'Test Notification', None)
 
-        except Exception, err:
+        except Exception as err:
             return str(err)
         else:
             return None
@@ -272,7 +272,7 @@ class NotificationSystem(object):
 
             current_app.logger.info('add_subscriber: {0}'.format(sub_uuid))
 
-        except Exception, err:
+        except Exception as err:
             current_app.logger.error('Error adding subscriber for host:{0} callback:{1} timeout:{2} err: {3}'.format(host, callback, timeout, str(err)))
 
         return sub_uuid
@@ -375,7 +375,7 @@ class NotificationSystem(object):
                 if notifier['notification'].suppress > 0 and self._check_suppress(notifier):
                     self._remove_suppressed_zone(notifier['zone'])
 
-            except Exception, err:
+            except Exception as err:
                 errors.append('Error sending notification for {0}: {1}'.format(notifier['notification'].description, str(err)))
 
         for notifier in self._wait_list:
@@ -384,7 +384,7 @@ class NotificationSystem(object):
                     notifier['notification'].send(notifier['type'], notifier['message'], notifier['raw'])
                     self._wait_list.remove(notifier)
 
-            except Exception, err:
+            except Exception as err:
                 errors.append('Error sending notification for {0}: {1}'.format(notifier['notification'].description, str(err)))
 
         return errors
@@ -469,7 +469,7 @@ class NotificationThread(threading.Thread):
 class BaseNotification(object):
     def __init__(self, obj):
         if 'subscriptions' in obj.settings.keys():
-            self._subscriptions = {int(k): v for k, v in json.loads(obj.settings['subscriptions'].value).iteritems()}
+            self._subscriptions = {int(k): v for k, v in json.loads(obj.settings['subscriptions'].value).items()}
         else:
             self._subscriptions = {}
 
@@ -578,7 +578,7 @@ class UPNPPushNotification(BaseNotification):
             relay_status.append(child)
 
         faulted_zones = Element("panel_zones_faulted")
-        for zid, z in current_app.decoder.device._zonetracker.zones.iteritems():
+        for zid, z in current_app.decoder.device._zonetracker.zones.items():
             if z.status != ADZone.CLEAR:
                 child = Element("z") # keep it small
                 child.text = str(z.zone)

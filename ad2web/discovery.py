@@ -14,9 +14,9 @@ except ImportError:
     has_netifaces = False
 
 from select import select
-from httplib import HTTPResponse
-from BaseHTTPServer import BaseHTTPRequestHandler
-from StringIO import StringIO
+from http.client import HTTPResponse
+from http.server import BaseHTTPRequestHandler
+from io import StringIO, BytesIO
 
 from .extensions import db
 from .settings.models import Setting
@@ -95,7 +95,7 @@ class DiscoveryServer(threading.Thread):
                         # TODO: Likely needs to be separate from this loop.
                         self._update()
                         
-                except Exception, err:
+                except Exception as err:
                     self._decoder.app.logger.error('Error in DiscoveryServer: {0}'.format(err), exc_info=True)
 
     def _handle_request(self, request, addr):
@@ -145,7 +145,7 @@ class DiscoveryServer(threading.Thread):
         with self._decoder.app.app_context():
             self._decoder.app.logger.debug('sending message to {0}: {1}'.format(addr, message))
 
-        for i in xrange(2): # NOTE: Sending multiple times due to UDP's unreliability.
+        for i in range(2): # NOTE: Sending multiple times due to UDP's unreliability.
             self._socket.sendto(message, addr)
             time.sleep(0.1)
 
@@ -199,7 +199,7 @@ class DiscoveryServer(threading.Thread):
 
 class DiscoveryRequest(BaseHTTPRequestHandler):
     def __init__(self, request_text):
-        self.rfile = StringIO(request_text)
+        self.rfile = BytesIO(request_text)
         self.raw_requestline = self.rfile.readline()
         self.error_code = self.error_message = None
         self.parse_request()
@@ -210,7 +210,7 @@ class DiscoveryRequest(BaseHTTPRequestHandler):
 
 class DiscoveryResponse(HTTPResponse):
     def __init__(self, response_text):
-        self.fp = StringIO(response_text)
+        self.fp = BytesIO(response_text if isinstance(response_text, bytes) else response_text.encode())
         self.debuglevel = 0
         self.strict = 0
         self.msg = None
