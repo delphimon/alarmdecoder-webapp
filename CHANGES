@@ -1,5 +1,37 @@
 # CHANGELOG
 
+## Version 0.9 (Python 3 migration)
+
+- **Python 3.6+ is now required.**  Python 2 is no longer supported.
+- Replaced the abandoned `gevent-socketio` library with `flask-socketio >= 5.0`
+  and `python-socketio >= 5.0`.  All Socket.IO event handling has been rewritten
+  using Flask-SocketIO's `@socketio.on()` decorator API.
+- Replaced `Flask-Script` with `Click` for the management CLI (`manage.py`).
+  Use `python3 manage.py run` and `python3 manage.py initdb` instead of the old
+  `python manage.py runserver` / `python manage.py db` commands.
+- Updated all WTForms usage for WTForms 3.x:
+  - `TextField` → `StringField`
+  - `Required` validator → `DataRequired`
+  - `wtforms.fields.html5` imports → `wtforms.fields`
+- Updated Flask-Babel for 3.x (`locale_selector` argument replaces
+  `@babel.localeselector` decorator).
+- Updated Flask-Login for 0.6+ (`init_app()` replaces `setup_app()`).
+- Updated Werkzeug for 2.x:
+  - `werkzeug.security` for `generate_password_hash` / `check_password_hash`
+  - `werkzeug.utils` for `secure_filename`
+  - `Markup` imported from `markupsafe` instead of `flask`
+- Replaced Python 2 `compiler` module with the built-in `ast` module for
+  import parsing in settings views.
+- Replaced `cgi.escape` with `html.escape`.
+- Fixed integer division in `pretty_date()` (`/` → `//`).
+- Replaced all Python 2 stdlib paths: `urllib2`, `urlparse`, `ConfigParser`,
+  `httplib`, `BaseHTTPServer` → their Python 3 equivalents.
+- Updated `requirements.txt` and `setup.py` with Python 3-compatible
+  minimum version floors for all dependencies.
+- Updated gunicorn worker class from `socketio.sgunicorn.GeventSocketIOWorker`
+  to `geventwebsocket.gunicorn.workers.GeventWebSocketWorker`.
+- Socket.IO client library updated from v0.9 to v4.7.5.
+
 ## Version 0.1
 
 Initial release.

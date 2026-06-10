@@ -3,10 +3,9 @@ CONFIG = {
     'user': 'pi',
     'group': 'dialout',
     'args': (
-        '--worker-class=socketio.sgunicorn.GeventSocketIOWorker',
+        '--worker-class=geventwebsocket.gunicorn.workers.GeventWebSocketWorker',
+        '--workers=1',
         '--timeout=120',
-        '--env=POLICY_SERVER=0',
-        #'--debug',
         #'--log-level=debug',
         'wsgi:application',
     ),

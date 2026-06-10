@@ -9,7 +9,7 @@ from flask import Blueprint, render_template, abort, g, request, flash, Response
 from flask import current_app as APP
 from flask_login import login_required, current_user
 
-from werkzeug import secure_filename
+from werkzeug.utils import secure_filename
 
 from ..extensions import db
 from ..decorators import admin_required
@@ -59,7 +59,7 @@ def checkavailable():
 @admin_required
 def check_for_updates():
     APP.decoder.updates = APP.decoder.updater.check_updates()
-    update_available = not all(not needs_update for component, (needs_update, branch, revision, new_revision, status, project_url) in APP.decoder.updates.iteritems())
+    update_available = not all(not needs_update for component, (needs_update, branch, revision, new_revision, status, project_url) in APP.decoder.updates.items())
     APP.jinja_env.globals['update_available'] = update_available
 
     return redirect(url_for('update.index'))
@@ -81,7 +81,7 @@ def update_firmware():
         flash('Cannot connect to alarmdecoder server', 'error')
         all_ok = "false"
 
-    if all_ok is "true":
+    if all_ok == "true":
         data = json.loads(response.read())
 
         counter = 0

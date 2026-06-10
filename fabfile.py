@@ -5,7 +5,6 @@
 import os
 
 from fabric.api import *
-from flask_script import Manager
 
 from ad2web import create_app
 from ad2web.extensions import db
@@ -42,7 +41,7 @@ def setup():
 
     local("virtualenv env")
     activate_this = "env/bin/activate_this.py"
-    execfile(activate_this, dict(__file__=activate_this))
+    exec(open(activate_this).read(), dict(__file__=activate_this))
     local("python setup.py install")
     reset()
 
@@ -61,7 +60,6 @@ def certs():
     reset()
 
     app, appsocket = create_app()
-    manager = Manager(app)
 
     with app.app_context():
         config_path = Setting(name='ser2sock_config_path', value='/etc/ser2sock')
@@ -103,11 +101,10 @@ def certs():
         ser2sock.hup()
 
 def revoke_cert(name):
-    print 'Revoking: ', name
+    print('Revoking: ', name)
 
     decoder = Decoder(None, None)
     app, appsocket = create_app()
-    manager = Manager(app)
 
     with app.app_context():
         cert = Certificate.query.filter_by(name=name).first()
@@ -123,9 +120,9 @@ def revoke_cert(name):
             db.session.add(cert)
             db.session.commit()
 
-            print name, 'successfully revoked.'
+            print(name, 'successfully revoked.')
         else:
-            print name, 'not found.'
+            print(name, 'not found.')
 
 def babel():
     """

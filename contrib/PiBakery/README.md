@@ -1,6 +1,11 @@
 # PiBakery AlarmDecoder WebApp recipe
 PiBakery is a program that allows super-easy presetup of Raspberry Pi SD cards. Customization is done using a Scratch-style interface, where each block represents a script to run on startup. 
 
+> **Note:** The PiBakery recipe and pre-built images listed here were originally
+> built for Raspbian 9 (Stretch).  Current installations should use a modern
+> **Raspberry Pi OS (Bookworm or later)** base image and follow the manual
+> installation instructions in the top-level [README](../../README.md).
+
 ## Quick Start flash a prebaked image
 The process of building a new image can take several hours so we have made available a pre-built image on the [AlarmDecoder.com downloads page](https://www.alarmdecoder.com/wiki/index.php/Raspberry_Pi). Download this image and use your preferred disk image tool to flash this raw disk image to your uSD.  We recommend [Etcher https://etcher.io/](https://etcher.io/) or [win32disimage https://sourceforge.net/projects/win32diskimager/](https://sourceforge.net/projects/win32diskimager/) or just use dd on linux or macOS from a shell.
 
@@ -25,7 +30,7 @@ If you wish to build your own image with all of the latest patches and some cust
 * Linux
   * Install from your distributions repository ex. '''sudo apt-get install nodejs''' or per your distributions howto for nodejs.
 
-* Download Raspbian Stretch lite zip file and unzip the img file to your desktop or preferred workspace. https://www.raspberrypi.org/downloads/raspbian/ 2018-10-09-raspbian-stretch-lite.img
+* Download Raspberry Pi OS Lite zip file and unzip the img file to your desktop or preferred workspace. https://www.raspberrypi.com/software/operating-systems/
 
 * Open a shell and go to the pibakery-master folder
   * Windows
@@ -41,19 +46,19 @@ If you wish to build your own image with all of the latest patches and some cust
   * npm start
 
 ## Building a new image from scratch
-Create a new image with the latest Raspbian 9 patches will take about one hour for a Pi3 B+ with a class 10 uSD card to complete.
+Create a new image with the latest Raspberry Pi OS patches will take about one hour for a Pi3 B+ with a class 10 uSD card to complete.
 * Launch PiBakery 2.0 and Import 
 [AlarmDecoder_WebApp_PiBakery_Recipe.xml](./AlarmDecoder_WebApp_PiBakery_Recipe.xml)
 
 * Select Write
   * SD Card: Pick the uSD card be sure it is correct all data will be lost.
-  * Operating system: select the Raspbian image on your desktop or workspace ex. 2018-10-09-raspbian-stretch-lite.img.
+  * Operating system: select the Raspberry Pi OS image on your desktop or workspace.
   * Press the "Write" button.
 * Once the disk is flashed place it into a Raspberry Pi that has a physical connection to the Internet and power it on. This process will take as much as an hour to complete. Once it is is done the Pi will shutdown.
 * Now you can power the Pi back up and it will be running all of the AlarmDecoder web services and ser2sock. To complete the appliance install see the quick start guide here https://www.alarmdecoder.com/wiki/index.php/Getting_Started .
 
 ## Modify PiBakery AlarmDecoder WebApp image
-Add WiFi to an existing image made with PiBakery or Raspbian Stretch simply insert the pre-flashed uSD card into your workstation and run the PiBakery 2.0 app.
+Add WiFi to an existing image made with PiBakery or Raspberry Pi OS simply insert the pre-flashed uSD card into your workstation and run the PiBakery 2.0 app.
 * Click on "Startup" from the left menu
   * Click and drag "On First Boot" to the right workspace.
 * Next click on "Network" from the left menu

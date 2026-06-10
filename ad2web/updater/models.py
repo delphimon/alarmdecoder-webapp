@@ -3,7 +3,7 @@ import sys
 import logging
 import shutil
 import json
-import urllib
+import urllib.request
 
 import sh
 import sqlalchemy.exc
@@ -26,7 +26,7 @@ except RuntimeError:
 
 def _print(*args, **kwargs):
     fmt, arguments = args[0], args[1:]
-    print fmt.format(*arguments)
+    print(fmt.format(*arguments))
 
 def _log(*args, **kwargs):
     logLevel = kwargs.pop('logLevel', logging.INFO)
@@ -59,7 +59,7 @@ class Updater(object):
         """
         status = {}
 
-        for name, component in self._components.iteritems():
+        for name, component in self._components.items():
             component.refresh()
             status[name] = (component.needs_update, component.branch, component.local_revision, component.remote_revision, component.status, component.project_url)
 
@@ -73,11 +73,11 @@ class Updater(object):
 
         ret = False
 
-        if version is not None and version is not '':
+        if version is not None and version != '':
             data = None
             version = version[1:]
             try:
-                response = urllib.urlopen(FIRMWARE_JSON_URL)
+                response = urllib.request.urlopen(FIRMWARE_JSON_URL)
                 data = json.loads(response.read())
                 for firmware in data['firmware']:
                     if firmware['tag'] == "Stable":
@@ -110,7 +110,7 @@ class Updater(object):
 
             ret[component_name] = component.update()
         else:
-            for name, component in self._components.iteritems():
+            for name, component in self._components.items():
                 if component.needs_update():
                     ret[component_name] = component.update()
 
@@ -224,7 +224,7 @@ class WebappUpdater(object):
                 self._db_updater.refresh()
                 db_succeeded = self._db_updater.update()
 
-        except sh.ErrorReturnCode, err:
+        except sh.ErrorReturnCode as err:
             git_succeeded = False
 
         if not git_succeeded or not db_succeeded:
@@ -352,7 +352,7 @@ class SourceUpdater(object):
             self._git.merge('origin/{0}'.format(self.branch))
             git_succeeded = True
 
-        except sh.ErrorReturnCode, err:
+        except sh.ErrorReturnCode as err:
             git_succeeded = False
 
         if not git_succeeded:
@@ -583,12 +583,12 @@ class DBUpdater(object):
                     try:
                         _log('Applying database revision: {0}'.format(rev))
                         command.upgrade(self._config, rev)
-                    except sqlalchemy.exc.OperationalError, err:
+                    except sqlalchemy.exc.OperationalError as err:
                         if 'already exists' in str(err):
                             _log('Table already exists.. stamping to revision.')
                             self._stamp_database(rev)
 
-            except sqlalchemy.exc.OperationalError, err:
+            except sqlalchemy.exc.OperationalError as err:
                 _log('DBUpdater: failure - {0}'.format(err), logLevel=logging.ERROR)
 
                 return False
@@ -601,14 +601,14 @@ class DBUpdater(object):
         try:
             command.downgrade(self._config, rev)
 
-        except sqlalchemy.exc.OperationalError, err:
+        except sqlalchemy.exc.OperationalError as err:
             _log('DBUpdater: failed to downgrade release: {0}'.format(err), logLevel=logging.ERROR)
             raise err
 
     def _stamp_database(self, rev):
         try:
             command.stamp(self._config, rev)
-        except sqlalchemy.exc.OperationalError, err:
+        except sqlalchemy.exc.OperationalError as err:
             _log('DBUpdater: stamp database - failure - {0}'.format(err), logLevel=logging.ERROR)
             raise err
 
@@ -643,7 +643,7 @@ class FirmwareUpdater(object):
 
             Firmware.upload(current_app.decoder.device._device, self._filename, self._stage_callback)
 
-        except Exception, err:
+        except Exception as err:
             current_app.logger.error('Error updating firmware: %s' % err)
             current_app.decoder.broadcast('firmwareupload', { 'stage': 'STAGE_ERROR', 'error': str(err) });
 

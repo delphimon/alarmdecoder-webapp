@@ -322,16 +322,16 @@ def sslserver():
 
             ser2sock.update_config(config_path.value, **config_settings)
 
-        except RuntimeError, err:
+        except RuntimeError as err:
             flash("{0}".format(err), 'error')
 
-        except ser2sock.HupFailed, err:
+        except ser2sock.HupFailed as err:
             flash("We had an issue restarting ser2sock: {0}".format(err), 'error')
 
-        except ser2sock.NotFound, err:
+        except ser2sock.NotFound as err:
             flash("We weren't able to find ser2sock on your system.", 'error')
 
-        except Exception, err:
+        except Exception as err:
             flash("Unexpected Error: {0}".format(err), 'error')
 
         else:
@@ -482,8 +482,8 @@ def device():
             relay_expanders = Setting.get_by_name('emulate_relay_expanders')
             deduplicate = Setting.get_by_name('deduplicate')
 
-            zx = [True if str(x) in form.zone_expanders.data else False for x in xrange(1, 6)]
-            rx = [True if str(x) in form.relay_expanders.data else False for x in xrange(1, 5)]
+            zx = [True if str(x) in form.zone_expanders.data else False for x in range(1, 6)]
+            rx = [True if str(x) in form.relay_expanders.data else False for x in range(1, 5)]
 
             panel_mode.value = form.panel_mode.data
             keypad_address.value = form.keypad_address.data

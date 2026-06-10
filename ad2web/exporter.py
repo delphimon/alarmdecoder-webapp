@@ -7,7 +7,6 @@ import json
 import re
 import socket
 import random
-import compiler
 import sys
 import types
 import importlib
@@ -19,7 +18,7 @@ from .utils import make_dir, tar_add_directory, tar_add_textfile
 from .settings import Setting
 from .settings.constants import EXPORT_MAP
 from datetime import datetime, timedelta
-from utils import INSTANCE_FOLDER_PATH
+from .utils import INSTANCE_FOLDER_PATH
 from flask import Response
 
 class Exporter(object):
@@ -45,7 +44,7 @@ class Exporter(object):
         with tarfile.open(name=bytes(self.filename), mode=self.WRITE_MODE, fileobj=self.fileobj) as tar:
             tar_add_directory(tar, self.prefix)
 
-            for export_file, model in EXPORT_MAP.iteritems():
+            for export_file, model in EXPORT_MAP.items():
                 tar_add_textfile(tar, export_file, bytes(self._export_model(model)), self.prefix)
 
     def writeFile(self):

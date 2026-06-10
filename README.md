@@ -8,214 +8,165 @@ This is the home of the official webapp for the [AlarmDecoder](http://www.alarmd
 
 ## Features
 
-- Supports all of the [AlarmDecoder](http://www.alarmdecoder.com) devices: AD2USB, AD2SERIAL and AD2PI.
+- Supports all AlarmDecoder devices: AD2USB, AD2SERIAL and AD2PI
 - Web-based keypad for your alarm system
 - Notifications on alarm events
 - Multiple user accounts and per-user notifications and certificates (if configured)
 
-## Installation
+## Requirements
 
-### Requirements
-
+- **Python 3.6+** (Python 2 is no longer supported)
 - nginx >= 1.6
 - gunicorn
+- gevent + gevent-websocket (for WebSocket support)
 
-NOTE: Other web and WSGI servers will likely work but will require configuration.
+> Other web/WSGI servers with WebSocket support will likely work but require additional configuration.
 
-### Pre-installed Image
+## Installation
 
-If you're running on a Raspberry Pi the easiest way to get started is to download our pre-configured Raspbian image.  The image can be found at [here](http://www.alarmdecoder.com/wiki/index.php/Raspberry_Pi).
+These instructions assume you have already used the [Raspberry Pi Imager](https://www.raspberrypi.com/software/) to flash **Raspberry Pi OS (Trixie / Debian 13)** and have configured your hostname, user account, SSH, and Wi-Fi through the imager's advanced settings.
 
-### Manual Installation
+> **Developers:** See [DEVELOPMENT.md](DEVELOPMENT.md) for a full guide on setting up a local development environment and debugging with VS Code.
 
-If you would rather do it by hand you can follow these steps using a Raspbian 9 base image:
-You can also look at the [PiBakery](contrib/PiBakery/) recipe for the steps. This presumes you will be the pi user with a monitor and keyboard attached to the Pi. Optionally you can connect over the network after enabling ssh and WiFi. See also [Headless wifi setup](https://www.raspberrypi.org/documentation/configuration/wireless/headless.md)
-* Enable SSH at boot (optional)
-```
-sudo touch /boot/ssh
-sudo rm /etc/ssh/ssh_host_*; dpkg-reconfigure openssh-server # !!Change keys!!
-```
-* Set default user password to 'raspberry' (user configuration)
-```
-passwd
-```
-* Modify config.txt to enable the GPIO UART and force cpu to turbo tested on Pi3, PiB, Pi3B+ and PiZero
-```
-sudo sed -i '/enable_uart\|pi3-miniuart-bt-overlay\|force_turbo/d' /boot/config.txt
-```  
-* Disable serial console so the kernel does not try to talk to the AD2Pi on the GPIO header  
-```
+### 1 — Prepare the UART (AD2PI users only)
+
+The GPIO UART must be free for the AlarmDecoder AD2PI. Disable the kernel serial console and enable the UART:
+
+```bash
+# Disable serial console
 sudo raspi-config nonint do_serial 1
+
+# Enable UART and reassign Bluetooth to the mini-UART
+# (Trixie uses /boot/firmware/config.txt)
+sudo sed -i '/enable_uart\|pi3-miniuart-bt-overlay\|force_turbo/d' /boot/firmware/config.txt
+printf '\nenable_uart=1\ndtoverlay=pi3-miniuart-bt-overlay\nforce_turbo=1\n' \
+  | sudo tee -a /boot/firmware/config.txt
+
+sudo reboot
 ```
-* Set hostname to AlarmDecoder
-```
-sudo hostname AlarmDecoder
-```
-* Set country code for WIFI (user option)
-```
-sudo raspi-config nonint do_wifi_country US
-```
-* Set TZ (user option) (user option)
-```
-sudo raspi-config nonint do_change_timezone America/Los_Angeles
-```
-* Set the Keyboard layout and language (user option)
-```
-sudo raspi-config nonint do_configure_keyboard US pc101
-```
-* Setup WiFi (optional) see also [Headless wifi setup](https://www.raspberrypi.org/documentation/configuration/wireless/headless.md)
-```
-sudo echo -E '
-network={
-    ssid="«your_SSID»"
-    psk="«your_PSK»"
-    key_mgmt=WPA-PSK
-}' >> /etc/wpa_supplicant/wpa_supplicant.conf
-```
-* Resize the file system and reboot
-```
-sudo raspi-config nonint do_expand_rootfs
-```
-* Update repositories.
-```
-sudo apt-get update
-```
-* Install packages
-```
-sudo apt-get install \
+
+> AD2USB and AD2SERIAL users can skip this step.
+
+### 2 — Install system packages
+
+```bash
+sudo apt-get update && sudo apt-get install -y \
   autoconf \
   automake \
   build-essential \
   cmake \
-  cmake-data \
   git \
-  gunicorn \
   libcurl4-openssl-dev \
   libffi-dev \
-  libpcre3-dev \
-  libpcre++-dev \
   libssl-dev \
   minicom \
-  miniupnpc \
   nginx \
-  python2.7-dev \
-  python-dev \
-  python-httplib2 \
-  python-opencv \
-  python-pip \
-  python-virtualenv \
+  python3 \
+  python3-dev \
+  python3-pip \
+  python3-venv \
   screen \
   sendmail \
   sqlite3 \
-  telnet \
-  vim \
   zlib1g-dev
 ```
-* Update pip
+
+### 3 — Create application directories
+
+```bash
+sudo mkdir -p /opt/alarmdecoder /opt/alarmdecoder-webapp
+sudo chown pi:pi /opt/alarmdecoder /opt/alarmdecoder-webapp
 ```
-sudo pip install --upgrade pip
+
+### 4 — Clone the repositories
+
+```bash
+cd /opt
+git clone https://github.com/nutechsoftware/alarmdecoder.git
+git clone https://github.com/nutechsoftware/alarmdecoder-webapp.git
 ```
-* Update pip setuptools
+
+### 5 — Create a Python virtual environment and install dependencies
+
+Raspberry Pi OS Trixie enforces [PEP 668](https://peps.python.org/pep-0668/) and prevents `pip` from installing packages into the system Python. Use a virtual environment:
+
+```bash
+cd /opt/alarmdecoder-webapp
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip setuptools
+pip install -r requirements.txt
+pip install -e /opt/alarmdecoder   # install the AlarmDecoder Python library
+pip install gunicorn               # install gunicorn inside the venv
 ```
-sudo pip install --upgrade setuptools
+
+### 6 — Set up ser2sock (serial/network bridge)
+
+```bash
+cd /opt
+git clone https://github.com/nutechsoftware/ser2sock.git
+cd /opt/ser2sock && ./configure && make && sudo cp ser2sock /usr/local/bin/
+
+# Create config directory and deploy default config
+sudo mkdir -p /etc/ser2sock
+sudo cp /opt/ser2sock/etc/ser2sock/ser2sock.conf /etc/ser2sock/
+sudo chown -R pi:pi /etc/ser2sock
+
+# Enable raw device mode and set the correct serial device
+sudo sed -i 's/raw_device_mode = 0/raw_device_mode = 1/' /etc/ser2sock/ser2sock.conf
+sudo sed -i 's|device = /dev/ttyAMA0|device = /dev/serial0|' /etc/ser2sock/ser2sock.conf
+
+# Install and enable the ser2sock init script
+sudo cp /opt/ser2sock/init/ser2sock /etc/init.d/
+sudo sed -i 's/EXTRA_START_ARGS=/#EXTRA_START_ARGS=/' /etc/init.d/ser2sock
+sudo sed -i 's/#RUN_AS=.*/RUN_AS=pi:pi/' /etc/init.d/ser2sock
+sudo update-rc.d ser2sock defaults
 ```
-* Create needed directories and set permissions for updates
-```
-sudo mkdir -p /opt/alarmdecoder /opt/alarmdecoder-webapp && sudo chown pi:pi /opt/alarmdecoder /opt/alarmdecoder-webapp
-```
-* Grab the latest master branch of the AlarmDecoder Python API
-```
-cd /opt && git clone https://github.com/nutechsoftware/alarmdecoder.git
-```
-* Grab the latest master branch of the AlarmDecoder web services app
-```
-cd /opt && git clone https://github.com/nutechsoftware/alarmdecoder-webapp.git
-```
-* Add Python requirements to the entire system as root
-```
-cd /opt/alarmdecoder-webapp/ && sudo pip install -r requirements.txt
-```
-* Add ser2sock
-```
-cd /opt && sudo git clone https://github.com/nutechsoftware/ser2sock.git
-cd /opt/ser2sock/ && sudo ./configure && sudo make && sudo cp ./ser2sock /usr/local/bin/
-```
-* Allow pi user to have r/w access to serial ports and a few key files for the WEB services to udpate by adding them to the same group and adding +w on that group
-```
+
+Grant the `pi` user access to serial ports and allow the webapp to update network configuration files:
+
+```bash
 sudo usermod -a -G dialout pi
 sudo chgrp dialout /etc/hosts /etc/hostname
 sudo chmod g+w /etc/hosts /etc/hostname
 ```
-* Create a ser2sock config folder owned by pi in etc and add config and update it
-```
-sudo mkdir -p /etc/ser2sock && sudo cp /opt/ser2sock/etc/ser2sock/ser2sock.conf /etc/ser2sock/ && sudo chown -R pi:pi /etc/ser2sock
-sudo sed -i 's/raw_device_mode = 0/raw_device_mode = 1/g' /etc/ser2sock/ser2sock.conf
-sudo sed -i 's/device = \/dev\/ttyAMA0/device = \/dev\/serial0/g' /etc/ser2sock/ser2sock.conf
-```
-* Set ser2sock to start at boot as user pi
-```
-sudo cp /opt/ser2sock/init/ser2sock /etc/init.d/
-sudo sed -i 's/EXTRA_START_ARGS=/#EXTRA_START_ARGS=/g' /etc/init.d/ser2sock
-sudo sed -i 's/#RUN_AS=.*/RUN_AS=pi:pi/g' /etc/init.d/ser2sock
-sudo update-rc.d ser2sock defaults
-```  
-* Enable the avahi service
-```
-cat <<EOF | sudo tee /etc/avahi/services/alarmdecoder.service
-<?xml version="1.0" standalone="no"?>
-<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
-<service-group>
-        <name replace-wildcards="yes">%h</name>
-        <service>
-                <type>_device-info._tcp</type>
-                <port>0</port>
-                <txt-record>model=AlarmDecoder</txt-record>
-        </service>
-        <service>
-                <type>_ssh._tcp</type>
-                <port>22</port>
-        </service>
-</service-group>
-EOF
-```
-* Create nginx ssl folder
-```
+
+### 7 — Configure nginx
+
+```bash
+# Generate a self-signed TLS certificate
 sudo mkdir -p /etc/nginx/ssl
-```
-* Remove all default web content
-```
-sudo rm -r /var/www/html/
-```
-* Enable gunicorn service and tuning for Alarmdecoder webapp
-```
-cat <<EOF | sudo tee /etc/systemd/system/gunicorn.service > /dev/null
-[Unit]
-Description=gunicorn daemon
-After=network.target
+sudo openssl req \
+  -x509 -nodes -sha256 -days 3650 -newkey rsa:4096 \
+  -keyout /etc/nginx/ssl/alarmdecoder.key \
+  -out /etc/nginx/ssl/alarmdecoder.crt \
+  -subj '/CN=AlarmDecoder.local/O=AlarmDecoder.com/C=US'
 
-[Service]
-PIDFile=/run/gunicorn/pid
-User=pi
-Group=dialout
-WorkingDirectory=/opt/alarmdecoder-webapp
-Environment="TERM=vt100"
-ExecStart=/usr/bin/gunicorn --worker-class=socketio.sgunicorn.GeventSocketIOWorker --timeout=120 --env=POLICY_SERVER=0 --log-level=debug wsgi:application
-ExecReload=/bin/kill -s HUP $MAINPID
-ExecStop=/bin/kill -s TERM $MAINPID
-PrivateTmp=true
+# Install the AlarmDecoder site and enable it
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo cp /opt/alarmdecoder-webapp/contrib/nginx/alarmdecoder /etc/nginx/sites-available/
+sudo ln -s /etc/nginx/sites-available/alarmdecoder /etc/nginx/sites-enabled/alarmdecoder
 
-[Install]
-WantedBy=multi-user.target
-EOF
+sudo systemctl enable nginx
 ```
-* Enable gunicorn server and set to start at boot
-```
+
+### 8 — Configure the gunicorn systemd service
+
+The service file in `contrib/gunicorn.d/alarmdecoder.service` is configured to run gunicorn from the virtual environment. Copy it into place:
+
+```bash
+sudo cp /opt/alarmdecoder-webapp/contrib/gunicorn.d/alarmdecoder.service \
+        /etc/systemd/system/alarmdecoder.service
 sudo systemctl daemon-reload
-sudo systemctl enable gunicorn
+sudo systemctl enable alarmdecoder
 ```
-* Enable log rotate for webapp and gunicorn
-```
-cat <<EOF | sudo tee /etc/logrotate.d/alarmdecoder > /dev/null
+
+> If you placed the virtual environment somewhere other than `/opt/alarmdecoder-webapp/.venv`, edit the `ExecStart` line in the service file before enabling it.
+
+### 9 — Configure log rotation
+
+```bash
+cat <<'EOF' | sudo tee /etc/logrotate.d/alarmdecoder > /dev/null
 /opt/alarmdecoder-webapp/instance/logs/*.log {
   weekly
   missingok
@@ -227,49 +178,93 @@ cat <<EOF | sudo tee /etc/logrotate.d/alarmdecoder > /dev/null
   sharedscripts
 }
 EOF
+```
 
-cat <<'EOF' | sudo tee /etc/logrotate.d/gunicorn > /dev/null
-/var/log/gunicorn/*.log {
-  weekly
-  missingok
-  rotate 5
-  compress
-  delaycompress
-  notifempty
-  create 0640 www-data www-data
-  sharedscripts
-  postrotate
-    [ -s /run/gunicorn/alarmdecoder.pid ] && kill -USR1 `cat /run/gunicorn/alarmdecoder.pid`
-  endscript
-}
+### 10 — Enable Avahi mDNS discovery (optional)
+
+This lets other devices on the local network find the Pi by hostname (e.g. `alarmdecoder.local`):
+
+```bash
+cat <<'EOF' | sudo tee /etc/avahi/services/alarmdecoder.service
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+  <name replace-wildcards="yes">%h</name>
+  <service>
+    <type>_device-info._tcp</type>
+    <port>0</port>
+    <txt-record>model=AlarmDecoder</txt-record>
+  </service>
+  <service>
+    <type>_ssh._tcp</type>
+    <port>22</port>
+  </service>
+</service-group>
 EOF
 ```
-* Create gunicorn app config directory and add our app configuration
+
+### 11 — Initialise the database
+
+```bash
+cd /opt/alarmdecoder-webapp
+source .venv/bin/activate
+python3 manage.py initdb
 ```
-sudo mkdir /etc/gunicorn.d/
-sudo cp /opt/alarmdecoder-webapp/contrib/gunicorn.d/alarmdecoder /etc/gunicorn.d/
+
+### 12 — Start the services
+
+```bash
+sudo systemctl start alarmdecoder
+sudo systemctl start nginx
 ```
-* Generate an ssl certificate for the webapp
+
+The webapp is now accessible at `https://<hostname>.local/` (or the Pi's IP address). The first visit will walk through the setup wizard to configure the AlarmDecoder device connection.
+
+## Python Dependencies
+
+All dependencies are listed in `requirements.txt` and must be installed inside a virtual environment (required on Trixie):
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
-sudo openssl req \
-  -x509 -nodes -sha256 -days 3650 -newkey rsa:4096 \
-  -keyout /etc/nginx/ssl/alarmdecoder.key \
-  -out /etc/nginx/ssl/alarmdecoder.crt \
-  -subj '/CN=AlarmDecoder.local/O=AlarmDecoder.com/C=US'
+
+Key dependencies:
+
+- **Flask** >= 2.0 with **Flask-SocketIO** >= 5.0 (replaces the legacy gevent-socketio)
+- **gevent** >= 21.12 + **gevent-websocket** >= 0.10 (WebSocket transport for gunicorn)
+- **WTForms** >= 3.0, **Flask-Babel** >= 3.0, **Flask-Login** >= 0.6, **Werkzeug** >= 2.0
+- **SQLAlchemy** >= 1.4 with **alembic** >= 1.0 for database migrations
+- **click** (CLI management via `manage.py`)
+
+## Running the Application
+
+### Development
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for the full developer setup guide including VS Code debugging.
+
+```bash
+source .venv/bin/activate
+python3 manage.py run
 ```
-* Remove the default site and add the alarmdecoder nginx site configuration and enable it
+
+### Production (gunicorn)
+
+```bash
+source .venv/bin/activate
+gunicorn \
+  --worker-class=geventwebsocket.gunicorn.workers.GeventWebSocketWorker \
+  --workers=1 --timeout=120 wsgi:application
 ```
-sudo rm /etc/nginx/sites-enabled/default
-sudo cp /opt/alarmdecoder-webapp/contrib/nginx/alarmdecoder /etc/nginx/sites-available/
-sudo ln -s /etc/nginx/sites-available/alarmdecoder /etc/nginx/sites-enabled/
-```
-* Enable `nginx` service
-```
-sudo systemctl enable nginx
-```
-* Init the AD2Web database as pi user
-```
-cd /opt/alarmdecoder-webapp/ && python manage.py initdb
+
+> **Note:** `--workers=1` is required for Socket.IO state consistency. The `GeventWebSocketWorker` class (from `gevent-websocket`) handles WebSocket upgrade requests correctly under gevent.
+
+### Database initialisation
+
+```bash
+source .venv/bin/activate
+python3 manage.py initdb
 ```
 
 ## Support
@@ -278,4 +273,4 @@ Please visit our [forums](http://www.alarmdecoder.com/forums/).
 
 ## Contributing
 
-We love the open-source community and welcome any contributions!  Just submit a pull request through [Github](http://github.com).
+We love the open-source community and welcome any contributions! Just submit a pull request through [GitHub](https://github.com/nutechsoftware/alarmdecoder-webapp).
