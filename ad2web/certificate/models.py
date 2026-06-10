@@ -41,12 +41,12 @@ class Certificate(db.Model):
     def init_on_load(self):
         try:
             self.key_obj = crypto.load_privatekey(crypto.FILETYPE_PEM, self.key)
-        except crypto.Error, err:
+        except crypto.Error as err:
             self.key_obj = None
 
         try:
             self.certificate_obj = crypto.load_certificate(crypto.FILETYPE_PEM, self.certificate)
-        except crypto.Error, err:
+        except crypto.Error as err:
             self.certificate_obj = None
 
     @classmethod

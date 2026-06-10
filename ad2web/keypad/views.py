@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
-from flask import Blueprint, render_template, abort, g, request, flash, Response, url_for, Markup, redirect
+from flask import Blueprint, render_template, abort, g, request, flash, Response, url_for, redirect
+from markupsafe import Markup
 from flask import current_app as APP
 from flask_login import login_required, current_user
 
