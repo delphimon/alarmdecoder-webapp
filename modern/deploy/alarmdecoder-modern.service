@@ -1,0 +1,22 @@
+[Unit]
+Description=AlarmDecoder Modern
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=alarmdecoder-modern
+Group=alarmdecoder-modern
+WorkingDirectory=/opt/alarmdecoder-modern/backend
+EnvironmentFile=/etc/alarmdecoder-modern/alarmdecoder-modern.env
+ExecStart=/opt/alarmdecoder-modern/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+WatchdogSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/alarmdecoder-modern
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,1 @@
+"""Modern AlarmDecoder backend package."""
