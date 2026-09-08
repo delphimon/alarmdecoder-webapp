@@ -2,6 +2,9 @@
 .pytest_cache/
 *.pyc
 *.db
+*.db-shm
+*.db-wal
+.DS_Store
 .simulator-writes.bin
 *.tsbuildinfo
 backend/.venv/

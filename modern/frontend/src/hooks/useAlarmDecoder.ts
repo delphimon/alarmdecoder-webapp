@@ -9,8 +9,11 @@ import type {
   NotificationConfig,
   PanelEvent,
   PanelState,
+  Passkey,
+  PinStatus,
   RawAlarmMessage,
   SettingItem,
+
   SetupStatus,
   Snapshot,
   SocketMessage,
@@ -22,8 +25,8 @@ const fallbackState: PanelState = {
   connected: false,
   connection_status: "idle",
   panel_type: "ADEMCO",
-  display_line1: "CONNECTING",
-  display_line2: "FAKE ADAPTER",
+  display_line1: "ALARMDECODER",
+  display_line2: "CONNECTING...",
   armed: false,
   armed_stay: false,
   armed_mode: "disarmed",
@@ -52,9 +55,9 @@ function apiBase(): string {
 }
 
 function websocketUrl(): string {
-  const explicitBase = import.meta.env.VITE_API_BASE_URL;
+  const explicitBase = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_ORIGIN;
   if (explicitBase) {
-    const url = new URL(explicitBase);
+    const url = new URL(explicitBase, window.location.href);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.pathname = "/ws/state";
     url.search = "";
@@ -65,7 +68,28 @@ function websocketUrl(): string {
   return `${protocol}//${window.location.host}/ws/state`;
 }
 
+function bufferToBase64Url(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function base64UrlToBuffer(base64url: string): ArrayBuffer {
+  const padding = "=".repeat((4 - (base64url.length % 4)) % 4);
+  const base64 = (base64url + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
 export function useAlarmDecoder() {
+
   const [state, setState] = useState<PanelState>(fallbackState);
   const [events, setEvents] = useState<PanelEvent[]>([]);
   const [rawMessages, setRawMessages] = useState<RawAlarmMessage[]>([]);
@@ -161,7 +185,16 @@ export function useAlarmDecoder() {
       if (reconnectTimer.current !== null) {
         window.clearTimeout(reconnectTimer.current);
       }
-      wsRef.current?.close();
+      const ws = wsRef.current;
+      if (ws) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.close();
+        } else if (ws.readyState === WebSocket.CONNECTING) {
+          ws.onopen = () => {
+            ws.close();
+          };
+        }
+      }
     };
   }, []);
 
@@ -246,6 +279,13 @@ export function useAlarmDecoder() {
   const loadHistoryRawMessages = useCallback((offset = 0) => apiGet<RawAlarmMessage[]>(`/api/history/raw-messages?limit=50&offset=${offset}`), [apiGet]);
   const loadZones = useCallback(() => apiGet<ZoneInfo[]>("/api/zones"), [apiGet]);
   const saveZones = useCallback((zones: ZoneInfo[]) => apiSend<ZoneInfo[]>("/api/zones", "PUT", { zones }), [apiSend]);
+  const deleteZone = useCallback((id: number) => apiSend<{ deleted: boolean }>(`/api/zones/${id}`, "DELETE"), [apiSend]);
+  const refreshConfig = useCallback(async () => {
+    const configResponse = await fetch(`${apiBase()}/api/config/effective`);
+    if (configResponse.ok) {
+      setConfig((await configResponse.json()) as EffectiveConfig);
+    }
+  }, []);
   const loadSettings = useCallback(() => apiGet<SettingItem[]>("/api/settings"), [apiGet]);
   const saveSettings = useCallback((settings: SettingItem[]) => apiSend<SettingItem[]>("/api/settings", "PUT", { settings }), [apiSend]);
   const loadUsers = useCallback(() => apiGet<User[]>("/api/admin/users"), [apiGet]);
@@ -272,6 +312,86 @@ export function useAlarmDecoder() {
   const importSettings = useCallback((data: Record<string, unknown>, dryRun = true) => apiSend<Record<string, unknown>>("/api/admin/import", "POST", { data, dry_run: dryRun }), [apiSend]);
   const testNotification = useCallback((provider: NotificationConfig["provider"], config: Record<string, unknown>) => apiSend<{ status: string }>("/api/admin/notifications/test", "POST", { provider, config }), [apiSend]);
 
+  const getPinStatus = useCallback(() => apiGet<PinStatus>("/api/settings/pin"), [apiGet]);
+  const savePin = useCallback((pin: string) => apiSend<PinStatus>("/api/settings/pin", "POST", { pin }), [apiSend]);
+  const loadPasskeys = useCallback(() => apiGet<Passkey[]>("/api/auth/passkeys"), [apiGet]);
+  const deletePasskey = useCallback((id: string) => apiSend<{ status: string }>(`/api/auth/passkeys/${encodeURIComponent(id)}`, "DELETE"), [apiSend]);
+
+  const registerPasskey = useCallback(async (name: string): Promise<Passkey> => {
+    if (!window.PublicKeyCredential) {
+      throw new Error("Passkeys are not supported on this browser or connection.");
+    }
+    const opts = await apiGet<{
+      challenge: string;
+      rp: { name: string; id: string };
+      user: { id: string; name: string; displayName: string };
+      pubKeyCredParams: { type: "public-key"; alg: number }[];
+      timeout: number;
+      authenticatorSelection: Record<string, unknown>;
+    }>("/api/auth/passkey/register/begin");
+
+
+    const credential = (await navigator.credentials.create({
+      publicKey: {
+        challenge: base64UrlToBuffer(opts.challenge),
+        rp: opts.rp,
+        user: {
+          id: base64UrlToBuffer(opts.user.id),
+          name: opts.user.name,
+          displayName: opts.user.displayName,
+        },
+        pubKeyCredParams: opts.pubKeyCredParams,
+        timeout: opts.timeout,
+        authenticatorSelection: opts.authenticatorSelection,
+      },
+    })) as PublicKeyCredential;
+
+    const response = credential.response as AuthenticatorAttestationResponse;
+    const finishPayload = {
+      id: credential.id,
+      rawId: bufferToBase64Url(credential.rawId),
+      name: name || "Passkey",
+      clientDataJSON: bufferToBase64Url(response.clientDataJSON),
+      attestationObject: bufferToBase64Url(response.attestationObject),
+    };
+
+    return await apiSend<Passkey>("/api/auth/passkey/register/finish", "POST", finishPayload);
+  }, [apiGet, apiSend]);
+
+  const loginWithPasskey = useCallback(async (): Promise<void> => {
+    if (!window.PublicKeyCredential) {
+      throw new Error("Passkeys are not supported on this browser or connection.");
+    }
+    const opts = await apiSend<{ challenge: string; timeout: number; rpId?: string }>("/api/auth/passkey/login/begin", "POST");
+
+    const assertion = (await navigator.credentials.get({
+      publicKey: {
+        challenge: base64UrlToBuffer(opts.challenge),
+        timeout: opts.timeout,
+        rpId: opts.rpId || undefined,
+        userVerification: "preferred",
+      },
+    })) as PublicKeyCredential;
+
+    const response = assertion.response as AuthenticatorAssertionResponse;
+    const finishPayload = {
+      id: assertion.id,
+      rawId: bufferToBase64Url(assertion.rawId),
+      clientDataJSON: bufferToBase64Url(response.clientDataJSON),
+      authenticatorData: bufferToBase64Url(response.authenticatorData),
+      signature: bufferToBase64Url(response.signature),
+    };
+
+    const loginRes = await apiSend<{ user: User; csrf_token: string }>("/api/auth/passkey/login/finish", "POST", finishPayload);
+    setAuth({
+      authenticated: true,
+      auth_required: Boolean(config?.auth_required),
+      csrf_token: loginRes.csrf_token,
+      user: loginRes.user,
+    });
+    await loadSnapshot();
+  }, [apiSend, config?.auth_required, loadSnapshot]);
+
   return useMemo(
     () => ({
       state,
@@ -283,6 +403,7 @@ export function useAlarmDecoder() {
       lastRealtimeEvent,
       sendCommand,
       login,
+      loginWithPasskey,
       logout,
       changePassword,
       reload: loadSnapshot,
@@ -290,6 +411,8 @@ export function useAlarmDecoder() {
       loadHistoryRawMessages,
       loadZones,
       saveZones,
+      deleteZone,
+      refreshConfig,
       loadSettings,
       saveSettings,
       loadUsers,
@@ -312,6 +435,11 @@ export function useAlarmDecoder() {
       exportSettings,
       importSettings,
       testNotification,
+      getPinStatus,
+      savePin,
+      loadPasskeys,
+      deletePasskey,
+      registerPasskey,
     }),
     [
       state,
@@ -323,6 +451,7 @@ export function useAlarmDecoder() {
       lastRealtimeEvent,
       sendCommand,
       login,
+      loginWithPasskey,
       logout,
       changePassword,
       loadSnapshot,
@@ -330,6 +459,8 @@ export function useAlarmDecoder() {
       loadHistoryRawMessages,
       loadZones,
       saveZones,
+      deleteZone,
+      refreshConfig,
       loadSettings,
       saveSettings,
       loadUsers,
@@ -352,6 +483,12 @@ export function useAlarmDecoder() {
       exportSettings,
       importSettings,
       testNotification,
+      getPinStatus,
+      savePin,
+      loadPasskeys,
+      deletePasskey,
+      registerPasskey,
     ],
   );
 }
+

@@ -1,0 +1,20 @@
+{
+  "name": "AlarmDecoder Modern",
+  "short_name": "AlarmDecoder",
+  "description": "Modern AlarmDecoder keypad monitor and control interface",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f1923",
+  "theme_color": "#17202a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["utilities", "security"]
+}

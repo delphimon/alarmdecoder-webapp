@@ -87,7 +87,7 @@ class Ser2SockAlarmDecoderDevice:
         if self._writer is None:
             raise RuntimeError("ser2sock is not connected.")
 
-        self._writer.write(keys.encode("ascii", errors="ignore") + b"\n")
+        self._writer.write(keys.encode("ascii", errors="ignore"))
         await self._writer.drain()
 
     def diagnostics(self) -> ConnectionDiagnostics:

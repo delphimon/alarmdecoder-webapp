@@ -85,7 +85,7 @@ class SerialAlarmDecoderDevice:
         if self._serial is None:
             raise RuntimeError("serial AlarmDecoder is not connected.")
 
-        payload = keys.encode("ascii", errors="ignore") + b"\n"
+        payload = keys.encode("ascii", errors="ignore")
         await asyncio.to_thread(self._serial.write, payload)
         if hasattr(self._serial, "flush"):
             await asyncio.to_thread(self._serial.flush)

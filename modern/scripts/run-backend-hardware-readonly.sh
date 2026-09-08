@@ -19,10 +19,11 @@ export ALARMDECODER_READ_ONLY=true
 export ALARMDECODER_ALLOW_COMMANDS=false
 export ALARMDECODER_AUTH_REQUIRED="${ALARMDECODER_AUTH_REQUIRED:-false}"
 export ALARMDECODER_DATABASE_URL="${ALARMDECODER_DATABASE_URL:-sqlite:///$ROOT_DIR/backend/alarmdecoder-modern-hardware-dev.db}"
+export ALARMDECODER_SESSION_SECRET="${ALARMDECODER_SESSION_SECRET:-alarmdecoder-modern-dev-secret-change-in-production-min32chars}"
 
 echo "Starting backend in read-only hardware mode."
-echo "Adapter: $ALARMDECODER_ADAPTER"
-echo "Target: ${ALARMDECODER_SER2SOCK_HOST}:${ALARMDECODER_SER2SOCK_PORT}"
+echo "Configured adapter: $ALARMDECODER_ADAPTER (saved database settings take precedence)"
+echo "Configured target: ${ALARMDECODER_SER2SOCK_HOST}:${ALARMDECODER_SER2SOCK_PORT}"
 echo "READ_ONLY=true, ALLOW_COMMANDS=false"
 
 exec uvicorn app.main:app --reload --host 127.0.0.1 --port "${PORT:-8000}"

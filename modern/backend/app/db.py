@@ -3,8 +3,9 @@ from __future__ import annotations
 from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, create_engine, delete, desc, select
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, create_engine, delete, desc, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+
 from sqlalchemy.pool import StaticPool
 
 from .config import AppConfig
@@ -104,9 +105,23 @@ class ApiTokenRecord(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class PasskeyCredentialRecord(Base):
+    __tablename__ = "passkey_credentials"
+
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    username: Mapped[str] = mapped_column(String(128), ForeignKey("users.username", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120), default="Passkey")
+    public_key: Mapped[str] = mapped_column(Text)
+    sign_count: Mapped[int] = mapped_column(Integer, default=0)
+    aaguid: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+
 class Database:
     def __init__(self, config: AppConfig) -> None:
-        connect_args = {"check_same_thread": False} if config.database_url.startswith("sqlite") else {}
+        connect_args = {"check_same_thread": False, "timeout": 10} if config.database_url.startswith("sqlite") else {}
         engine_args = {"connect_args": connect_args}
         if config.database_url == "sqlite:///:memory:":
             engine_args["poolclass"] = StaticPool
@@ -116,10 +131,20 @@ class Database:
 
     def init(self) -> None:
         Base.metadata.create_all(self.engine)
+        if self.config.database_url.startswith("sqlite") and self.config.database_url != "sqlite:///:memory:":
+            with self.engine.connect() as conn:
+                conn.execute(text("PRAGMA journal_mode=WAL;"))
+                conn.execute(text("PRAGMA synchronous=NORMAL;"))
+
+    def get_setting(self, key: str) -> str | None:
+        with self.session_factory() as session:
+            record = session.get(AppSettingRecord, key)
+            return record.value if record else None
 
     def session(self) -> Generator[Session, None, None]:
         with self.session_factory() as session:
             yield session
+
 
     def append_event(self, event: PanelEvent) -> None:
         import json
@@ -214,6 +239,15 @@ class Database:
                 session.add(ZoneRecord(id=zone_id, name="", enabled=True))
                 session.commit()
 
+    def delete_zone(self, zone_id: int) -> bool:
+        with self.session_factory() as session:
+            record = session.get(ZoneRecord, zone_id)
+            if record is not None:
+                session.delete(record)
+                session.commit()
+                return True
+            return False
+
     def list_notifications(self) -> list[NotificationSettingRecord]:
         with self.session_factory() as session:
             return list(session.scalars(select(NotificationSettingRecord).order_by(NotificationSettingRecord.id)).all())
@@ -282,3 +316,42 @@ class Database:
             session.delete(record)
             session.commit()
             return True
+
+    def list_passkeys(self, username: str) -> list[PasskeyCredentialRecord]:
+        with self.session_factory() as session:
+            return list(session.scalars(select(PasskeyCredentialRecord).where(PasskeyCredentialRecord.username == username).order_by(desc(PasskeyCredentialRecord.created_at))).all())
+
+    def get_passkey(self, credential_id: str) -> PasskeyCredentialRecord | None:
+        with self.session_factory() as session:
+            return session.get(PasskeyCredentialRecord, credential_id)
+
+    def add_passkey(self, credential_id: str, username: str, name: str, public_key: str, aaguid: str | None = None) -> PasskeyCredentialRecord:
+        with self.session_factory() as session:
+            cred = PasskeyCredentialRecord(
+                id=credential_id,
+                username=username,
+                name=name,
+                public_key=public_key,
+                aaguid=aaguid,
+            )
+            session.add(cred)
+            session.commit()
+            return cred
+
+    def delete_passkey(self, credential_id: str, username: str) -> bool:
+        with self.session_factory() as session:
+            cred = session.get(PasskeyCredentialRecord, credential_id)
+            if cred and cred.username == username:
+                session.delete(cred)
+                session.commit()
+                return True
+            return False
+
+    def update_passkey_usage(self, credential_id: str, sign_count: int) -> None:
+        with self.session_factory() as session:
+            cred = session.get(PasskeyCredentialRecord, credential_id)
+            if cred:
+                cred.sign_count = sign_count
+                cred.last_used_at = datetime.now(timezone.utc)
+                session.commit()
+

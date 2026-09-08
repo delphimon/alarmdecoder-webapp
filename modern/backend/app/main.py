@@ -10,6 +10,8 @@ from secrets import token_urlsafe
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+
 
 from .auth import (
     authenticate_user,
@@ -32,6 +34,18 @@ from .auth import (
 from .device.ser2sock import ReadOnlyAdapterError
 from .db import ApiTokenRecord, AppSettingRecord, AuditLogRecord, CustomButtonRecord, EventRecord, NotificationSettingRecord, RawMessageRecord, UserRecord, ZoneRecord
 from .logging_config import configure_logging, log_startup_config
+from .passkeys import (
+    PasskeyLoginBeginResponse,
+    PasskeyLoginFinishRequest,
+    PasskeyPublic,
+    PasskeyRegisterBeginResponse,
+    PasskeyRegisterFinishRequest,
+    create_authentication_options,
+    create_registration_options,
+    verify_authentication,
+    verify_registration,
+)
+
 from .models import (
     AuditEntry,
     AuthStatus,
@@ -150,6 +164,67 @@ async def logout(request: Request, response: Response, user: UserRecord | None =
     return {"status": "ok"}
 
 
+@app.get("/api/auth/passkey/register/begin", response_model=PasskeyRegisterBeginResponse)
+async def passkey_register_begin(request: Request, user: UserRecord = Depends(require_current_user)) -> PasskeyRegisterBeginResponse:
+    rp_id = request.headers.get("host", "localhost").split(":")[0]
+    return create_registration_options(user.username, rp_id=rp_id)
+
+
+@app.post("/api/auth/passkey/register/finish", response_model=PasskeyPublic)
+async def passkey_register_finish(request: Request, payload: PasskeyRegisterFinishRequest, user: UserRecord = Depends(require_current_user)) -> PasskeyPublic:
+    require_csrf(request)
+    result = verify_registration(payload, runtime.database)
+    runtime.database.audit(user.username, "passkey_registered", {"name": payload.name})
+    return result
+
+
+@app.post("/api/auth/passkey/login/begin", response_model=PasskeyLoginBeginResponse)
+async def passkey_login_begin(request: Request) -> PasskeyLoginBeginResponse:
+    rp_id = request.headers.get("host", "localhost").split(":")[0]
+    return create_authentication_options(rp_id=rp_id)
+
+
+@app.post("/api/auth/passkey/login/finish", response_model=LoginResponse)
+async def passkey_login_finish(request: Request, response: Response, payload: PasskeyLoginFinishRequest) -> LoginResponse:
+    username = verify_authentication(payload, runtime.database)
+    with runtime.database.session_factory() as session:
+        user = get_user(session, username)
+        if not user or user.disabled:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or disabled.")
+
+    token = create_access_token(user.username, user.role, runtime.config.session_secret, runtime.config.access_token_minutes)
+    set_session_cookie(response, token)
+    csrf_token = set_csrf_cookie(response)
+    runtime.database.audit(user.username, "passkey_login_success", {"username": user.username})
+    return LoginResponse(user=user_public(user), csrf_token=csrf_token)
+
+
+@app.get("/api/auth/passkeys", response_model=list[PasskeyPublic])
+async def list_user_passkeys(user: UserRecord = Depends(require_current_user)) -> list[PasskeyPublic]:
+    records = runtime.database.list_passkeys(user.username)
+    return [
+        PasskeyPublic(
+            id=r.id,
+            name=r.name,
+            username=r.username,
+            created_at=r.created_at.isoformat() if hasattr(r.created_at, "isoformat") else str(r.created_at),
+            last_used_at=r.last_used_at.isoformat() if hasattr(r.last_used_at, "isoformat") and r.last_used_at else None,
+        )
+        for r in records
+    ]
+
+
+@app.delete("/api/auth/passkeys/{credential_id}")
+async def delete_user_passkey(request: Request, credential_id: str, user: UserRecord = Depends(require_current_user)) -> dict[str, str]:
+    require_csrf(request)
+    deleted = runtime.database.delete_passkey(credential_id, user.username)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Passkey not found.")
+    runtime.database.audit(user.username, "passkey_deleted", {"id": credential_id})
+    return {"status": "ok"}
+
+
+
 @app.post("/api/account/password")
 async def change_password(request: Request, payload: ChangePasswordRequest, user: UserRecord = Depends(require_current_user)) -> dict[str, str]:
     require_csrf(request)
@@ -205,6 +280,8 @@ async def setup_complete(request: Request, payload: SetupCompleteRequest) -> Use
     if payload.serial_baudrate is not None:
         settings["serial_baudrate"] = str(payload.serial_baudrate)
     runtime.database.upsert_settings(settings)
+    runtime.apply_settings_from_db()
+    await runtime.reload_adapter()
     runtime.database.audit(actor, "setup_completed", {"adapter": payload.adapter, "panel_type": payload.panel_type})
     return public
 
@@ -330,8 +407,31 @@ async def get_settings(_: UserRecord = Depends(require_role("admin"))) -> list[S
 async def put_settings(request: Request, update: SettingsUpdate, user: UserRecord = Depends(require_role("admin"))) -> list[SettingItem]:
     require_csrf(request)
     records = runtime.database.upsert_settings({item.key: item.value for item in update.settings})
+    runtime.apply_settings_from_db()
+    await runtime.reload_adapter()
     runtime.database.audit(user.username, "settings_updated", {"keys": [item.key for item in update.settings]})
     return [_setting_from_record(record) for record in records]
+
+
+class PinPayload(BaseModel):
+    pin: str = Field(min_length=4, max_length=16)
+
+
+@app.get("/api/settings/pin")
+async def get_pin_status(_: UserRecord = Depends(require_role("admin", "operator"))) -> dict[str, bool]:
+    configured = bool(runtime.database.get_setting("panel_pin"))
+    return {"configured": configured}
+
+
+@app.post("/api/settings/pin")
+async def set_panel_pin(request: Request, payload: PinPayload, user: UserRecord = Depends(require_role("admin"))) -> dict[str, bool]:
+    require_csrf(request)
+    from .crypto import encrypt_value
+    encrypted = encrypt_value(payload.pin, runtime.config.session_secret)
+    runtime.database.upsert_settings({"panel_pin": encrypted})
+    runtime.database.audit(user.username, "panel_pin_updated")
+    return {"configured": True}
+
 
 
 @app.get("/api/zones", response_model=list[ZoneInfo])
@@ -345,6 +445,14 @@ async def put_zones(request: Request, update: ZonesUpdate, user: UserRecord = De
     records = runtime.database.upsert_zones([zone.model_dump() for zone in update.zones])
     runtime.database.audit(user.username, "zones_updated", {"count": len(update.zones)})
     return [_zone_from_record(record) for record in records]
+
+
+@app.delete("/api/zones/{zone_id}")
+async def delete_zone(zone_id: int, request: Request, user: UserRecord = Depends(require_role("admin"))) -> dict[str, bool]:
+    require_csrf(request)
+    deleted = runtime.database.delete_zone(zone_id)
+    runtime.database.audit(user.username, "zone_deleted", {"zone_id": zone_id})
+    return {"deleted": deleted}
 
 
 @app.get("/api/admin/users", response_model=list[UserPublic])
@@ -573,7 +681,10 @@ def _raw_from_record(record: RawMessageRecord) -> RawAlarmMessage:
 
 
 def _setting_from_record(record: AppSettingRecord) -> SettingItem:
+    if record.key == "panel_pin":
+        return SettingItem(key=record.key, value="<configured>" if record.value else "")
     return SettingItem(key=record.key, value=record.value)
+
 
 
 def _zone_from_record(record: ZoneRecord) -> ZoneInfo:
@@ -625,7 +736,7 @@ def _api_token_public(record: ApiTokenRecord, user: UserRecord | None) -> ApiTok
 
 def _redact_notification_config(config: dict) -> dict:
     safe = dict(config)
-    for key in ("password", "token", "secret", "authorization"):
+    for key in ("password", "token", "secret", "authorization", "hmac_secret", "api_key"):
         if key in safe:
             safe[key] = "<redacted>"
     return safe

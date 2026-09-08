@@ -37,6 +37,30 @@ def test_state_tracks_disarmed_ready_fault_and_restore() -> None:
     assert state.faulted_zones == []
 
 
+def test_real_hardware_ready_clears_faulted_zones() -> None:
+    """Real Honeywell panels transition from FAULT to READY without an explicit ZONE RESTORE string."""
+    state = PanelState()
+
+    # 1. Door opened: FAULT 01
+    state = _apply_line(
+        state,
+        '[00000311100000000A--],001,[f71f80001001030038020000020000],"FAULT 01 GARAGE ENTRY DOOR "',
+    )
+    assert state.ready is False
+    assert state.faulted_zones == [1]
+    assert "FAULT 01" in state.display_line1
+
+    # 2. Door closed: Panel becomes ready with DISARMED BYPASS READY TO ARM
+    state = _apply_line(
+        state,
+        '[10000011100000003A--],001,[f71f80001001801c38020000020000],"DISARMED BYPASS READY TO ARM "',
+    )
+    assert state.ready is True
+    assert state.faulted_zones == []
+    assert state.bypassed is True
+    assert "READY" in state.display_line2
+
+
 def test_state_tracks_arm_modes_and_disarm_transition() -> None:
     state = PanelState()
 

@@ -4,26 +4,30 @@ Modern replacement AlarmDecoder web app. This implementation is separate from th
 
 ## Included
 
-- FastAPI backend.
-- React + TypeScript + Vite frontend.
-- Fake AlarmDecoder device adapter.
-- Read-only ser2sock TCP adapter for hardware validation.
-- Local serial adapter for AD2USB, AD2PI, and AD2SERIAL style deployments.
-- In-memory alarm state model.
-- WebSocket state/event updates.
-- Defensive AlarmDecoder message parser and state reducer.
-- Keypad UI with ADEMCO/DSC controls, status indicators, legacy beep WAV playback, sound mute, quick commands, keyboard digits, cursor display, and confirmation for dangerous function keys.
-- REST endpoint for keypad commands.
-- SQLite-backed event, raw-message, user, settings, notification, zone, and audit tables with in-memory live buffers.
-- Local login with viewer/operator/admin roles, CSRF protection for cookie sessions, API tokens, custom server-side keypad buttons, setup flow APIs, and admin user/settings/notification management APIs.
-- Alembic migrations.
-- Webhook notification provider.
-- Local ser2sock simulator and safe test harness.
-- Production deployment templates for Raspberry Pi OS.
-
-## Not Included Yet
-
-- Native system package.
+- **FastAPI backend**: Modern async Python (3.12+) application with SQLAlchemy 2.0 and Pydantic v2.
+- **React + TypeScript + Vite frontend**: Accessible, modern UI with dark mode (OS auto / light / dark), phosphor-green LCD, and native `<dialog>` modals.
+- **Progressive Web App (PWA)**: Installable on mobile and desktop, home-screen icon, web manifest, and caching service worker.
+- **WebAuthn Passkeys**: Fast, secure passwordless login using Touch ID, Face ID, Windows Hello, or hardware security keys (FIDO2/WebAuthn).
+- **AlarmDecoder Protocol Bitfield Parser**: Full 20-bit status field parser extracting ready, armed away/stay, chime, fire, low battery, check zones, AC power, and beep counts directly from raw frames with LCD text fallback.
+- **Server-Side PIN Synthesis**: High-level commands (`arm_away`, `arm_stay`, `disarm`, `chime_toggle`) translated automatically to panel-specific sequences for Honeywell/ADEMCO Vista and DSC panels.
+- **Encrypted PIN Storage**: Panel PIN is encrypted at rest using HKDF-SHA256 derived keys and Fernet symmetric encryption; never returned to the client or logged.
+- **Reliable Persistence**: SQLite WAL (Write-Ahead Logging) mode with event persistence decoupled from the async event loop to eliminate WebSocket broadcast latency.
+- **Hardware Device Adapters**:
+  - `ser2sock`: TCP network adapter for network-attached AlarmDecoder devices (e.g., Raspberry Pi running ser2sock).
+  - `serial`: Direct serial adapter for AD2USB, AD2PI, and AD2SERIAL devices (with automatic `dialout` group management).
+  - `fake`: In-memory simulated adapter for offline development and CI.
+- **Keypad UI**: ADEMCO and DSC layouts, LCD emulator with custom cursor, beep audio playback with mute control, quick action buttons, and dangerous action confirmations.
+- **Authentication & Security**:
+  - Viewer, Operator, and Admin role hierarchy.
+  - HttpOnly SameSite=Strict cookie sessions with double-submit CSRF protection.
+  - Revocable SHA-256 hashed API bearer tokens.
+  - Comprehensive redaction of alarm codes, credentials, and notification secrets from logs, audits, and events.
+- **Notifications**: Async Webhook and SMTP email notification providers.
+- **Dev & Test Tooling**:
+  - Automated local development scripts with fail-fast health monitoring.
+  - Local ser2sock simulator and comprehensive test harness (43 automated tests).
+  - Automated GitHub Actions release workflow building deployable tarballs.
+  - Production-ready systemd, environment, and installation scripts for Raspberry Pi OS.
 
 ## Backend
 
@@ -40,6 +44,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 Useful endpoints:
 
 - `GET http://localhost:8000/health`
+- `GET http://localhost:8000/ready`
 - `GET http://localhost:8000/api/state`
 - `GET http://localhost:8000/api/events`
 - `GET http://localhost:8000/api/snapshot`
@@ -49,26 +54,43 @@ Useful endpoints:
 - `GET http://localhost:8000/api/config/effective`
 - `GET http://localhost:8000/api/history/events`
 - `GET http://localhost:8000/api/history/raw-messages`
-- `GET/PUT http://localhost:8000/api/settings`
+- `GET/PUT http://localhost:8000/api/settings` (persists settings in DB and hot-reloads hardware connection)
+- `GET/POST http://localhost:8000/api/settings/pin` (Panel PIN configuration - write-only / masked)
 - `GET/PUT http://localhost:8000/api/zones`
+- `DELETE http://localhost:8000/api/zones/{zone_id}`
 - `GET/POST/PATCH/DELETE http://localhost:8000/api/admin/users`
 - `GET/PUT http://localhost:8000/api/admin/notifications`
 - `GET http://localhost:8000/api/audit`
 - `GET http://localhost:8000/api/auth/me`
 - `POST http://localhost:8000/api/auth/login`
 - `POST http://localhost:8000/api/auth/logout`
+- `GET http://localhost:8000/api/auth/passkey/register/start`
+- `POST http://localhost:8000/api/auth/passkey/register/finish`
+- `GET http://localhost:8000/api/auth/passkey/login/start`
+- `POST http://localhost:8000/api/auth/passkey/login/finish`
+- `GET/DELETE http://localhost:8000/api/auth/passkey/credentials`
 - `POST http://localhost:8000/api/keypad/command`
 - `WS ws://localhost:8000/ws/state`
 
-Example command in fake development mode:
+Example command with server-side PIN synthesis (preferred):
 
 ```bash
 curl -X POST http://localhost:8000/api/keypad/command \
   -H 'Content-Type: application/json' \
+  -H 'X-CSRF-Token: <token>' \
+  -d '{"command":"arm_away"}'
+```
+
+Example raw keystroke command (admin only):
+
+```bash
+curl -X POST http://localhost:8000/api/keypad/command \
+  -H 'Content-Type: application/json' \
+  -H 'X-CSRF-Token: <token>' \
   -d '{"keys":"AWAY","dangerous_confirmed":true}'
 ```
 
-Submitted keypad values are treated as sensitive. The backend redacts command values in events, audit logs, diagnostics, and notifications.
+Submitted keypad values and PINs are treated as sensitive. The backend redacts command values in events, audit logs, diagnostics, and notifications.
 
 When using browser cookie auth, mutating requests must send the CSRF token from `/api/auth/me` or `/api/auth/login` in the `X-CSRF-Token` header.
 
@@ -103,13 +125,23 @@ For command-enabled development against your actual ser2sock hardware:
 ./scripts/dev-hardware-commands.sh
 ```
 
-Then open `http://127.0.0.1:5173`, sign in as `admin`, and use the keypad. This mode forces:
+If your AlarmDecoder device is on a specific IP or custom port:
+
+```bash
+ALARMDECODER_SER2SOCK_HOST=192.168.1.50 ALARMDECODER_SER2SOCK_PORT=10000 ./scripts/dev-hardware-commands.sh
+```
+
+Then open `http://127.0.0.1:5173`, sign in as `admin`, and:
+1. Go to **Settings** > **Panel PIN** to configure your panel's 4-digit PIN (stored with HKDF-SHA256 + Fernet encryption). This enables high-level one-touch **Arm Away**, **Arm Stay**, and **Disarm** buttons.
+2. Go to **Settings** > **Security & Passkeys** to enroll your device's biometric authenticator (Touch ID, Face ID, Windows Hello, or security key) for 1-click passwordless login.
+
+This mode forces:
 
 - `ALARMDECODER_READ_ONLY=false`
 - `ALARMDECODER_ALLOW_COMMANDS=true`
 - `ALARMDECODER_AUTH_REQUIRED=true`
 
-Only signed-in `operator` or `admin` users can send commands. The app still redacts submitted keypad values from events, diagnostics, audit logs, and notifications.
+Only signed-in `operator` or `admin` users can send commands. The app still redacts submitted keypad values and PINs from events, diagnostics, audit logs, and notifications.
 
 To exercise the real network adapter path without hardware, start the local ser2sock simulator in a third terminal and run the backend in read-only ser2sock mode:
 
@@ -146,11 +178,13 @@ VITE_API_BASE_URL=http://localhost:8000 npm run dev
 
 The UI is organized around the legacy ad2web navigation model:
 
-- Keypad: ADEMCO/DSC keypad, panel LCD, LEDs, sound mute, custom buttons, and command safety state.
+- Keypad: ADEMCO/DSC keypad, panel LCD with authentic phosphor-green styling, LEDs, sound mute, quick action commands (Arm Away, Arm Stay, Disarm with synthesized PIN), custom buttons, and command safety confirmation.
 - Log: paged parsed event history and raw message history.
-- Zones: zone naming and enabled/disabled state.
+- Zones: categorized normal vs faulted zones with zone naming and enable/disable toggles.
 - Diagnostics: raw messages, parsed events, current state JSON, connection/read-only status.
-- Settings: device setup, notifications, keypad settings, users, password, API tokens, export/import, and advanced audit/config views.
+- Settings: device adapter configuration, encrypted Panel PIN, notifications (Webhook and SMTP email), keypad settings, users, WebAuthn Passkeys, password change, API tokens, export/import, and advanced audit/config views.
+- Dark Mode: automatic OS-level theme detection with instant manual override (Auto / Light / Dark) in the top navigation bar.
+- Progressive Web App (PWA): can be installed as a native app on iOS, iPadOS, Android, macOS, Windows, and Linux with full offline asset caching.
 
 ## Fake Adapter Behavior
 

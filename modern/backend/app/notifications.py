@@ -7,6 +7,8 @@ import logging
 from typing import Protocol
 from urllib import request
 
+import httpx
+
 from .db import NotificationSettingRecord
 from .models import PanelEvent
 
@@ -53,11 +55,19 @@ class WebhookNotificationProvider:
             }
         ).encode()
 
-        def post() -> None:
-            req = request.Request(self.url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
-            request.urlopen(req, timeout=5).close()
-
-        await asyncio.to_thread(post)
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    self.url,
+                    content=payload,
+                    headers={"Content-Type": "application/json"},
+                )
+        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            logger = logging.getLogger("alarmdecoder.notifications")
+            logger.error("Webhook delivery failed for %s: %s", self.url, exc)
+        except httpx.HTTPError as exc:
+            logger = logging.getLogger("alarmdecoder.notifications")
+            logger.error("Webhook HTTP error for %s: %s", self.url, exc)
 
 
 @dataclass
@@ -110,6 +120,14 @@ class NotificationService:
                         event_types=set(event_types) if isinstance(event_types, list) else None,
                     )
                 )
+            elif record.provider == "smtp":
+                host = str(config.get("host", ""))
+                sender = str(config.get("sender", ""))
+                recipient = str(config.get("recipient", ""))
+                if not host or not sender or not recipient:
+                    self.logger.warning("SMTP notification config missing required fields (host, sender, recipient)")
+                    continue
+                providers.append(SMTPNotificationProvider(host=host, sender=sender, recipient=recipient))
         self.providers = providers
 
     async def handle_event(self, event: PanelEvent) -> None:

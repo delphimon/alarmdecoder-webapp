@@ -1,5 +1,9 @@
 # AlarmDecoder Webapp
 
+> [!TIP]
+> **Looking for the modern rewritten webapp?**
+> Check out the **[AlarmDecoder Modern](./modern)** directory for the complete modern webapp rewrite featuring FastAPI (Python 3.12+), React + TypeScript + Vite, WebAuthn Passkeys, PWA support, dark mode, server-side PIN keystroke synthesis, and Raspberry Pi OS production deployment scripts.
+
 ## Summary
 
 This is the home of the official webapp for the [AlarmDecoder](http://www.alarmdecoder.com) family of home security devices.

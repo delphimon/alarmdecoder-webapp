@@ -29,5 +29,5 @@ def log_startup_config(config: AppConfig) -> None:
     logger.info("effective_config %s", config.safe_public_dict())
     if config.adapter != "fake" and not config.read_only and config.allow_commands:
         logger.warning("hardware command mode is enabled")
-    if config.session_secret == "dev-only-change-me" and config.auth_required:
+    if config.session_secret in {"dev-only-change-me", "alarmdecoder-modern-dev-secret-change-in-production-min32chars"} and config.auth_required:
         logger.warning("default session secret is configured while auth is required")

@@ -4,19 +4,24 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
 User=alarmdecoder-modern
 Group=alarmdecoder-modern
+SupplementaryGroups=dialout
 WorkingDirectory=/opt/alarmdecoder-modern/backend
 EnvironmentFile=/etc/alarmdecoder-modern/alarmdecoder-modern.env
-ExecStart=/opt/alarmdecoder-modern/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+ExecStart=/opt/alarmdecoder-modern/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --lifespan on
 Restart=on-failure
 RestartSec=5
+RestartPreventExitStatus=1
 WatchdogSec=30
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ReadWritePaths=/var/lib/alarmdecoder-modern
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

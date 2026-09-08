@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from secrets import token_urlsafe
 
+import logging
+
 import jwt
 from fastapi import Depends, HTTPException, Request, Response, status
 from passlib.context import CryptContext
@@ -14,10 +16,25 @@ from .db import ApiTokenRecord, UserRecord
 from .models import AuthStatus, UserPublic
 
 
+logger = logging.getLogger("alarmdecoder.auth")
+_SESSION_SECRET_MIN_LENGTH = 32
+
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 COOKIE_NAME = "ad2_session"
 CSRF_COOKIE_NAME = "ad2_csrf"
 CSRF_HEADER_NAME = "x-csrf-token"
+
+
+def warn_weak_secret(secret: str) -> None:
+    """Log a warning if SESSION_SECRET is shorter than the minimum required length."""
+    if len(secret) < _SESSION_SECRET_MIN_LENGTH:
+        logger.warning(
+            "SESSION_SECRET is only %d characters; at least %d are required for adequate security. "
+            "Set ALARMDECODER_SESSION_SECRET to a strong random value in production.",
+            len(secret),
+            _SESSION_SECRET_MIN_LENGTH,
+        )
+
 
 
 def hash_password(password: str) -> str:
@@ -86,7 +103,6 @@ def set_session_cookie(response: Response, token: str) -> None:
         max_age=60 * 60 * 8,
         path="/",
     )
-    set_csrf_cookie(response)
 
 
 def clear_session_cookie(response: Response) -> None:
@@ -160,12 +176,12 @@ def optional_current_user(request: Request) -> UserRecord | None:
 def require_csrf(request: Request) -> None:
     if bearer_token_from_request(request):
         return
-    if COOKIE_NAME not in request.cookies:
-        return
-    cookie = request.cookies.get(CSRF_COOKIE_NAME)
-    header = request.headers.get(CSRF_HEADER_NAME)
-    if not cookie or not header or cookie != header:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF token missing or invalid.")
+    if COOKIE_NAME in request.cookies or CSRF_COOKIE_NAME in request.cookies:
+        cookie = request.cookies.get(CSRF_COOKIE_NAME)
+        header = request.headers.get(CSRF_HEADER_NAME)
+        if not cookie or not header or cookie != header:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF token missing or invalid.")
+
 
 
 def require_current_user(user: UserRecord | None = Depends(optional_current_user)) -> UserRecord:

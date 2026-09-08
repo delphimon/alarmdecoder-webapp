@@ -27,23 +27,52 @@ def reduce_panel_state(state: PanelState, event: PanelEvent) -> PanelState:
         if status in {"idle", "connecting", "connected", "disconnected", "reconnecting", "error"}:
             next_state.connection_status = status
             next_state.connected = status == "connected"
+            if not next_state.connected and (next_state.last_message.startswith("ALARMDECODER") or not next_state.last_message):
+                next_state.display_line1 = "ALARMDECODER"
+                next_state.display_line2 = (status.upper() + "...").ljust(16)[:16]
     elif event.type in {"panel_display", "panel_message"}:
         text = str(data.get("text", event.message))
         next_state.display_line1, next_state.display_line2 = _split_lcd(text)
         next_state.last_message = text
         next_state.beeps = int(data.get("beeps", 0))
         next_state.cursor_location = data.get("cursor_location")
-        if "ready" in data:
-            next_state.ready = bool(data["ready"])
-        if "armed" in data:
-            next_state.armed = bool(data["armed"])
-        if "armed_stay" in data:
-            next_state.armed_stay = bool(data["armed_stay"])
+
+        flags = data.get("parsed_flags") or {}
+        if flags:
+            next_state.ready = bool(flags.get("ready", next_state.ready))
+            next_state.armed = bool(flags.get("armed_away", False) or flags.get("armed_stay", False))
+            next_state.armed_stay = bool(flags.get("armed_stay", False))
             next_state.armed_mode = "stay" if next_state.armed_stay else ("away" if next_state.armed else "disarmed")
-        if "chime" in data:
-            next_state.chime = bool(data["chime"])
+            next_state.chime = bool(flags.get("chime", next_state.chime))
+            next_state.bypassed = bool(flags.get("zone_bypassed", next_state.bypassed))
+            next_state.fire_detected = bool(flags.get("fire", next_state.fire_detected))
+            next_state.battery_low = bool(flags.get("battery_low", next_state.battery_low))
+            next_state.battery_trouble = next_state.battery_low
+            next_state.check_zones = bool(flags.get("check_zones", next_state.check_zones))
+            next_state.alarming = bool(flags.get("alarm_sounding", next_state.alarming))
+            if "ac_power" in flags:
+                next_state.power = "AC" if flags["ac_power"] else "BATTERY"
+            if flags.get("beeps"):
+                next_state.beeps = int(flags["beeps"])
+        else:
+            if "ready" in data:
+                next_state.ready = bool(data["ready"])
+            if "armed" in data:
+                next_state.armed = bool(data["armed"])
+            if "armed_stay" in data:
+                next_state.armed_stay = bool(data["armed_stay"])
+                next_state.armed_mode = "stay" if next_state.armed_stay else ("away" if next_state.armed else "disarmed")
+            if "chime" in data:
+                next_state.chime = bool(data["chime"])
+
+        # When the panel is ready, all monitored zones are closed
+        if next_state.ready and next_state.faulted_zones:
+            next_state.faulted_zones = []
+
     elif event.type == "panel_ready":
         next_state.ready = bool(data.get("ready", next_state.ready))
+        if next_state.ready and next_state.faulted_zones:
+            next_state.faulted_zones = []
     elif event.type == "panel_armed":
         mode = str(data.get("mode", "unknown"))
         next_state.armed = True
@@ -92,17 +121,24 @@ def reduce_panel_state(state: PanelState, event: PanelEvent) -> PanelState:
             next_state.faulted_zones.append(zone)
             next_state.faulted_zones.sort()
         next_state.ready = False
-        next_state.display_line1 = f"FAULT ZONE {zone}"
-        next_state.display_line2 = str(data.get("name", "Front Door"))[:16]
-        next_state.last_message = f"{next_state.display_line1:<16}{next_state.display_line2:<16}"
+        # Only overwrite LCD display text if it's currently empty
+        if not next_state.last_message or not next_state.last_message.strip():
+            next_state.display_line1 = f"FAULT ZONE {zone}"
+            next_state.display_line2 = str(data.get("name", f"Zone {zone}"))[:16]
+            next_state.last_message = f"{next_state.display_line1:<16}{next_state.display_line2:<16}"
         next_state.beeps = 3 if next_state.chime else 0
     elif event.type == "zone_restore":
         zone = int(data.get("zone", 0))
-        next_state.faulted_zones = [z for z in next_state.faulted_zones if z != zone]
+        if zone:
+            next_state.faulted_zones = [z for z in next_state.faulted_zones if z != zone]
+        else:
+            next_state.faulted_zones = []
         next_state.ready = len(next_state.faulted_zones) == 0 and not next_state.armed
-        next_state.display_line1 = "SYSTEM READY" if next_state.ready else "ZONE RESTORED"
-        next_state.display_line2 = f"ZONE {zone}" if not next_state.ready else "ALL ZONES OK"
-        next_state.last_message = f"{next_state.display_line1:<16}{next_state.display_line2:<16}"
+        # Only overwrite LCD display text if it's currently showing a fault or empty
+        if not next_state.last_message or "FAULT" in next_state.last_message.upper():
+            next_state.display_line1 = "SYSTEM READY" if next_state.ready else "ZONE RESTORED"
+            next_state.display_line2 = f"ZONE {zone}" if not next_state.ready else "ALL ZONES OK"
+            next_state.last_message = f"{next_state.display_line1:<16}{next_state.display_line2:<16}"
         next_state.beeps = 1
     elif event.type in {"alarm", "alarm_active"}:
         zone = data.get("zone", "?")
@@ -148,3 +184,11 @@ def reduce_panel_state(state: PanelState, event: PanelEvent) -> PanelState:
 
     next_state.updated_at = datetime.now(timezone.utc)
     return next_state
+
+
+def initial_panel_state() -> PanelState:
+    return PanelState(
+        display_line1="ALARMDECODER",
+        display_line2="CONNECTING...",
+        last_message="ALARMDECODER    CONNECTING...",
+    )

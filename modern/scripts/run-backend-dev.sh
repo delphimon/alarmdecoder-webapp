@@ -15,5 +15,6 @@ export ALARMDECODER_ADAPTER="${ALARMDECODER_ADAPTER:-fake}"
 export ALARMDECODER_DATABASE_URL="${ALARMDECODER_DATABASE_URL:-sqlite:///$ROOT_DIR/backend/alarmdecoder-modern-dev.db}"
 export ALARMDECODER_READ_ONLY="${ALARMDECODER_READ_ONLY:-false}"
 export ALARMDECODER_ALLOW_COMMANDS="${ALARMDECODER_ALLOW_COMMANDS:-true}"
+export ALARMDECODER_SESSION_SECRET="${ALARMDECODER_SESSION_SECRET:-alarmdecoder-modern-dev-secret-change-in-production-min32chars}"
 
 exec uvicorn app.main:app --reload --host 127.0.0.1 --port "${PORT:-8000}"

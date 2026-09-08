@@ -144,3 +144,16 @@ export type SocketMessage = {
   events?: PanelEvent[];
   raw_messages?: RawAlarmMessage[];
 };
+
+export type Passkey = {
+  id: string;
+  name: string;
+  username: string;
+  created_at: string;
+  last_used_at: string | null;
+};
+
+export type PinStatus = {
+  configured: boolean;
+};
+

@@ -41,6 +41,18 @@ This checklist separates repository-complete work from on-device validation. Rep
 - [x] Frontend uses the legacy `1beep.wav` through `7beep.wav` assets and only plays them for incoming panel message beep fields when sound is enabled.
 - [x] Local ser2sock simulator exists for Mac development without hardware.
 - [x] `scripts/test-harness.sh` runs safe backend, frontend, and deployment checks without hardware access.
+- [x] Full 20-character AlarmDecoder bitfield flag parsing with low battery, check zones, and AC power states.
+- [x] Server-side PIN keystroke synthesis for Honeywell/ADEMCO Vista and DSC panels.
+- [x] HKDF-SHA256 and Fernet symmetric encryption for stored panel PIN.
+- [x] WebAuthn / FIDO2 passkey registration, authentication, and credential management.
+- [x] SQLite WAL (Write-Ahead Logging) mode and thread-pool decoupled event persistence.
+- [x] Async Webhook and SMTP email notification providers.
+- [x] Accessible dark mode design system with OS-level auto-detection and 3-way manual toggle.
+- [x] Progressive Web App (PWA) manifest, service worker, and mobile meta tags.
+- [x] Native `<dialog>` accessible modals replacing `window.confirm` and `window.prompt`.
+- [x] Dialout group automation in deploy scripts for unprivileged serial device access.
+- [x] GitHub Actions automated release pipeline with pre-built asset packaging.
+- [x] Dev startup scripts with fail-fast health polling and process death detection.
 
 ## Raspberry Pi Deployment Validation
 

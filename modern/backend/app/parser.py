@@ -59,9 +59,11 @@ def _parse_keypad_message(raw: str) -> dict[str, object]:
     match = AD2_KEYPAD_RE.match(raw)
     if match:
         display_text = match.group("text")
+        flags_str = match.group("flags")
         return {
             "display_text": display_text,
-            "flags": match.group("flags"),
+            "flags": flags_str,
+            "parsed_flags": _parse_keypad_flags(flags_str),
             "metadata": match.group("metadata"),
             "beeps": _coerce_beeps(match.group("beeps")),
             "format": "keypad",
@@ -72,6 +74,7 @@ def _parse_keypad_message(raw: str) -> dict[str, object]:
         return {
             "display_text": quoted[-1],
             "flags": None,
+            "parsed_flags": {},
             "metadata": None,
             "beeps": _extract_beeps(raw),
             "format": "quoted",
@@ -80,9 +83,71 @@ def _parse_keypad_message(raw: str) -> dict[str, object]:
     return {
         "display_text": "",
         "flags": None,
+        "parsed_flags": {},
         "metadata": None,
         "beeps": _extract_beeps(raw),
         "format": "unknown",
+    }
+
+
+def _parse_keypad_flags(flags_str: str) -> dict:
+    """Parse the AlarmDecoder bracket-encoded flag string into named booleans.
+
+    The AlarmDecoder flag string captured between the first pair of square
+    brackets is a 20-character sequence where each position is either '1'
+    (bit set) or '0'/'.' (bit clear).  Positions 5-7 encode the beep count
+    as a 3-digit decimal substring (e.g. '003').
+
+    Position map (0-indexed):
+        0  ready
+        1  armed_away
+        2  armed_stay
+        3  backlight
+        4  programming_mode
+        5-7  beeps (3-character decimal string)
+        8  zone_bypassed
+        9  ac_power
+        10 chime
+        11 alarm_occurred
+        12 alarm_sounding
+        13 battery_low
+        14 entry_delay_off
+        15 fire
+        16 check_zones
+        17 perimeter_only
+        18 system_fault
+        19 panel_type_dsc
+    """
+    if not flags_str or len(flags_str) < 20:
+        return {}
+
+    def bit(pos: int) -> bool:
+        return flags_str[pos] == "1"
+
+    try:
+        beep_count = int(flags_str[5:8])
+    except ValueError:
+        beep_count = 0
+
+    return {
+        "ready": bit(0),
+        "armed_away": bit(1),
+        "armed_stay": bit(2),
+        "backlight": bit(3),
+        "programming_mode": bit(4),
+        "beeps": beep_count,
+        "zone_bypassed": bit(8),
+        "ac_power": bit(9),
+        "chime": bit(10),
+        "alarm_occurred": bit(11),
+        "alarm_sounding": bit(12),
+        "battery_low": bit(13),
+        "entry_delay_off": bit(14),
+        "fire": bit(15),
+        "check_zones": bit(16),
+        "perimeter_only": bit(17),
+        "system_fault": bit(18),
+        "panel_type_dsc": bit(19),
     }
 
 
@@ -101,11 +166,13 @@ def _panel_display_event(text: str, raw: str, parsed: dict[str, object]) -> Pane
             "normalized": normalized,
             "beeps": parsed.get("beeps", 0),
             "flags": parsed.get("flags"),
+            "parsed_flags": parsed.get("parsed_flags", {}),
             "metadata": parsed.get("metadata"),
             "format": parsed.get("format"),
             "raw": raw,
         },
     )
+
 
 
 def _semantic_events(text: str) -> list[PanelEvent]:

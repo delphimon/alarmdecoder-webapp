@@ -52,8 +52,8 @@ class PanelState(BaseModel):
     connected: bool = False
     connection_status: ConnectionStatus = "idle"
     panel_type: PanelType = "ADEMCO"
-    display_line1: str = "SYSTEM READY"
-    display_line2: str = "FAKE ADAPTER"
+    display_line1: str = "ALARMDECODER"
+    display_line2: str = "CONNECTING..."
     armed: bool = False
     armed_stay: bool = False
     armed_mode: ArmMode = "disarmed"
@@ -63,6 +63,8 @@ class PanelState(BaseModel):
     bypassed: bool = False
     fire_detected: bool = False
     battery_trouble: bool = False
+    battery_low: bool = False
+    check_zones: bool = False
     trouble: bool = False
     trouble_text: str | None = None
     panic: bool = False
@@ -71,7 +73,8 @@ class PanelState(BaseModel):
     beeps: int = Field(default=0, ge=0, le=7)
     cursor_location: int | None = None
     faulted_zones: list[int] = Field(default_factory=list)
-    last_message: str = "SYSTEM READY    FAKE ADAPTER"
+
+    last_message: str = "ALARMDECODER    CONNECTING..."
     last_raw_message: str | None = None
     last_command: str | None = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

@@ -15,7 +15,8 @@ export function StateSummary({ state, config, socketStatus }: StateSummaryProps)
         <span className={`connection ${state.connection_status}`}>{state.connection_status}</span>
       </div>
 
-      <div className="status-grid">
+      <div className="status-grid" role="region" aria-label="System status indicators">
+
         <StatusPill label="Connected" active={state.connected} tone="green" />
         <StatusPill label="Ready" active={state.ready} tone="green" />
         <StatusPill label="Armed" active={state.armed} tone="red" />
@@ -34,7 +35,15 @@ export function StateSummary({ state, config, socketStatus }: StateSummaryProps)
         </div>
         <div>
           <dt>Mode</dt>
-          <dd>{config?.read_only ? "Read-only" : "Read/write fake"}</dd>
+          <dd>
+            {config?.read_only
+              ? "Read-only"
+              : config?.adapter === "fake"
+                ? "Simulator"
+                : config?.allow_commands
+                  ? "Commands enabled"
+                  : "Read-only"}
+          </dd>
         </div>
         <div>
           <dt>WebSocket</dt>
@@ -58,7 +67,7 @@ export function StateSummary({ state, config, socketStatus }: StateSummaryProps)
         </div>
         <div>
           <dt>Faulted zones</dt>
-          <dd>{state.faulted_zones.length ? state.faulted_zones.join(", ") : "None"}</dd>
+          <dd>{(!state.ready && state.faulted_zones.length) ? state.faulted_zones.join(", ") : "None"}</dd>
         </div>
         <div>
           <dt>Relays</dt>

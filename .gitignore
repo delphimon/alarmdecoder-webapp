@@ -27,3 +27,7 @@ openid
 env
 temp
 webapp.sublime-*
+
+.DS_Store
+*.db-shm
+*.db-wal

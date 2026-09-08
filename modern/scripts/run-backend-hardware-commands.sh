@@ -19,10 +19,11 @@ export ALARMDECODER_READ_ONLY=false
 export ALARMDECODER_ALLOW_COMMANDS=true
 export ALARMDECODER_AUTH_REQUIRED=true
 export ALARMDECODER_DATABASE_URL="${ALARMDECODER_DATABASE_URL:-sqlite:///$ROOT_DIR/backend/alarmdecoder-modern-hardware-dev.db}"
+export ALARMDECODER_SESSION_SECRET="${ALARMDECODER_SESSION_SECRET:-alarmdecoder-modern-dev-secret-change-in-production-min32chars}"
 
 echo "Starting backend in COMMAND-ENABLED hardware mode."
-echo "Adapter: $ALARMDECODER_ADAPTER"
-echo "Target: ${ALARMDECODER_SER2SOCK_HOST}:${ALARMDECODER_SER2SOCK_PORT}"
+echo "Configured adapter: $ALARMDECODER_ADAPTER (saved database settings take precedence)"
+echo "Configured target: ${ALARMDECODER_SER2SOCK_HOST}:${ALARMDECODER_SER2SOCK_PORT}"
 echo "READ_ONLY=false, ALLOW_COMMANDS=true, AUTH_REQUIRED=true"
 echo "Commands can be sent to the alarm panel after you sign in as operator/admin."
 

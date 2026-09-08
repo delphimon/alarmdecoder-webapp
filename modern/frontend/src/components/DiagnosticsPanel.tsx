@@ -1,4 +1,5 @@
 import type { EffectiveConfig, PanelEvent, PanelState, RawAlarmMessage } from "../types";
+import { StateSummary } from "./StateSummary";
 
 type DiagnosticsPanelProps = {
   state: PanelState;
@@ -12,11 +13,14 @@ export function DiagnosticsPanel({ state, events, rawMessages, config, socketSta
   const parsedEvents = events.filter((event) => event.type !== "raw_message");
 
   return (
-    <section className="diagnostics-panel" aria-label="Diagnostics">
-      <div className="section-heading">
-        <h2>Diagnostics</h2>
-        <span>{config?.read_only ? "Read-only" : "Commands enabled"}</span>
-      </div>
+    <div className="diagnostics-page-container">
+      <StateSummary state={state} config={config} socketStatus={socketStatus} />
+
+      <section className="diagnostics-panel" aria-label="Diagnostics">
+        <div className="section-heading">
+          <h2>Diagnostics & Protocol Events</h2>
+          <span>{config?.read_only ? "Read-only" : "Commands enabled"}</span>
+        </div>
 
       <dl className="diagnostic-grid">
         <div>
@@ -67,6 +71,7 @@ export function DiagnosticsPanel({ state, events, rawMessages, config, socketSta
         <pre>{JSON.stringify(state, null, 2)}</pre>
       </details>
     </section>
+  </div>
   );
 }
 

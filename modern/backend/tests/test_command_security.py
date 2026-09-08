@@ -99,7 +99,7 @@ async def test_ser2sock_command_mode_writes_only_when_explicitly_enabled() -> No
         connected.set()
         writer.write(b'[10000001000000003A--],001,[0000000000000000],"****DISARMED****  Ready to Arm  "\n')
         await writer.drain()
-        data = await asyncio.wait_for(reader.readline(), timeout=1)
+        data = await asyncio.wait_for(reader.read(16), timeout=1)
         received.extend(data)
         writer.close()
         await writer.wait_closed()
@@ -123,8 +123,30 @@ async def test_ser2sock_command_mode_writes_only_when_explicitly_enabled() -> No
         await asyncio.wait_for(connected.wait(), timeout=1)
         await runtime.send_keys(KeypadCommand(keys="1234", dangerous_confirmed=True), user=user)
         await asyncio.sleep(0.05)
-        assert received == b"1234\n"
+        assert received == b"1234"
     finally:
         await runtime.stop()
         server.close()
         await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_single_keystrokes_bypass_cooldown_for_pin_entry() -> None:
+    runtime = AlarmRuntime(
+        _config(
+            adapter="fake",
+            read_only=False,
+            allow_commands=True,
+            auth_required=False,
+            command_cooldown_seconds=10.0,
+        )
+    )
+    try:
+        await runtime.start()
+        # Rapid keypad entry (e.g. typing a PIN + function digit) must not be throttled by 10s cooldown
+        for digit in ["1", "2", "3", "4", "2"]:
+            state = await runtime.send_keys(KeypadCommand(keys=digit, dangerous_confirmed=False), user=None)
+            assert state is not None
+        assert runtime.state.armed is True
+    finally:
+        await runtime.stop()

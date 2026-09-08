@@ -102,4 +102,4 @@ async def test_serial_adapter_writes_only_when_command_mode_enabled() -> None:
         with suppress(asyncio.CancelledError):
             await task
 
-    assert serial.writes == [b"1234\n"]
+    assert serial.writes == [b"1234"]

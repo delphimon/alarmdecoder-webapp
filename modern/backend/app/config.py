@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
+
+_logger = logging.getLogger("alarmdecoder.config")
+_KNOWN_ADAPTERS = {"fake", "ser2sock", "serial", "ad2usb", "ad2pi", "ad2serial"}
+_SESSION_SECRET_MIN_LENGTH = 32
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -25,7 +30,7 @@ class AppConfig:
     allow_commands: bool = False
     auth_required: bool = False
     database_url: str = "sqlite:///:memory:"
-    session_secret: str = "dev-only-change-me"
+    session_secret: str = "alarmdecoder-modern-dev-secret-change-in-production-min32chars"
     access_token_minutes: int = 480
     command_cooldown_seconds: float = 1.5
     raw_retention_days: int = 14
@@ -40,7 +45,7 @@ class AppConfig:
         adapter = os.getenv("ALARMDECODER_ADAPTER", "fake").strip().lower()
         read_only_default = adapter != "fake"
         default_db_path = Path(os.getenv("ALARMDECODER_DATA_DIR", ".")).joinpath("alarmdecoder-modern.db")
-        return cls(
+        config = cls(
             adapter=adapter,
             ser2sock_host=os.getenv("ALARMDECODER_SER2SOCK_HOST", "alarmdecoder.local").strip(),
             ser2sock_port=int(os.getenv("ALARMDECODER_SER2SOCK_PORT", "10000")),
@@ -52,7 +57,7 @@ class AppConfig:
             allow_commands=_env_bool("ALARMDECODER_ALLOW_COMMANDS", adapter == "fake"),
             auth_required=_env_bool("ALARMDECODER_AUTH_REQUIRED", adapter != "fake"),
             database_url=os.getenv("ALARMDECODER_DATABASE_URL", f"sqlite:///{default_db_path}").strip(),
-            session_secret=os.getenv("ALARMDECODER_SESSION_SECRET", "dev-only-change-me"),
+            session_secret=os.getenv("ALARMDECODER_SESSION_SECRET", "alarmdecoder-modern-dev-secret-change-in-production-min32chars"),
             access_token_minutes=int(os.getenv("ALARMDECODER_ACCESS_TOKEN_MINUTES", "480")),
             command_cooldown_seconds=float(os.getenv("ALARMDECODER_COMMAND_COOLDOWN_SECONDS", "1.5")),
             raw_retention_days=int(os.getenv("ALARMDECODER_RAW_RETENTION_DAYS", "14")),
@@ -60,6 +65,26 @@ class AppConfig:
             bootstrap_admin_username=os.getenv("ALARMDECODER_BOOTSTRAP_ADMIN_USERNAME"),
             bootstrap_admin_password=os.getenv("ALARMDECODER_BOOTSTRAP_ADMIN_PASSWORD"),
         )
+        config.validate()
+        return config
+
+    def validate(self) -> None:
+        """Validate configuration values and warn or abort on mis-configuration."""
+        if len(self.session_secret) < _SESSION_SECRET_MIN_LENGTH:
+            _logger.warning(
+                "SESSION_SECRET is only %d characters; at least %d are required for adequate security. "
+                "Set ALARMDECODER_SESSION_SECRET to a strong random value in production.",
+                len(self.session_secret),
+                _SESSION_SECRET_MIN_LENGTH,
+            )
+        if not self.database_url:
+            raise SystemExit("ALARMDECODER_DATABASE_URL must not be empty. Set a valid SQLAlchemy database URL.")
+        if self.adapter not in _KNOWN_ADAPTERS:
+            _logger.warning(
+                "Unknown adapter %r; expected one of %s. The application may fail to connect.",
+                self.adapter,
+                ", ".join(sorted(_KNOWN_ADAPTERS)),
+            )
 
     def safe_public_dict(self) -> dict[str, object]:
         return {

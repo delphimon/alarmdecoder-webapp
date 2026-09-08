@@ -17,6 +17,7 @@ class FakeAlarmDecoderAdapter:
         self._chime = True
         self._scenario_step = 0
         self.read_only = False
+        self._key_buffer = ""
 
     async def open(self) -> None:
         self._running = True
@@ -72,6 +73,30 @@ class FakeAlarmDecoderAdapter:
         elif normalized == "RESTORE":
             await self._emit(PanelEvent(type="zone_restore", message="Zone 1 restored", data={"zone": 1, "name": "Front Door"}))
         else:
+            self._key_buffer = (self._key_buffer + normalized)[-10:]
+            if len(self._key_buffer) >= 5 and self._key_buffer[:-1].isdigit():
+                action_key = self._key_buffer[-1]
+                self._key_buffer = ""
+                if action_key == "2":
+                    await self._emit(PanelEvent(type="arm", message="System armed away", data={"stay": False}))
+                    return
+                elif action_key == "3":
+                    await self._emit(PanelEvent(type="arm", message="System armed stay", data={"stay": True}))
+                    return
+                elif action_key == "1":
+                    await self._emit(PanelEvent(type="disarm", message="System disarmed"))
+                    return
+                elif action_key == "9":
+                    self._chime = not self._chime
+                    await self._emit(
+                        PanelEvent(
+                            type="chime_changed",
+                            message=f"Chime {'enabled' if self._chime else 'disabled'}",
+                            data={"enabled": self._chime},
+                        )
+                    )
+                    return
+
             await self._emit(
                 PanelEvent(
                     type="panel_message",
